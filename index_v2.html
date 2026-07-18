@@ -12942,6 +12942,10 @@ function bagStaffRoster() {
     .map(s => ({ username: s.username, displayName: s.display_name || s.username }));
 }
 let realtimeChannel = null;
+let realtimePollTimer = null;      // periodic safety re-pull (foreground desk self-heal)
+let realtimeReconnectTimer = null; // backoff timer for re-subscribing a dropped channel
+let realtimeReconnectDelay = 2000; // grows on repeated failures, reset on SUBSCRIBED
+let realtimeGen = 0;               // bumped each subscribe; stale channel callbacks ignore themselves
 let cloudSettings = {}; // Settings synced from cloud
 let pendingWrites = []; // Offline queue
 // Print Station de-dupe. We remember, per car, the exact tag CONTENT last
@@ -13023,6 +13027,21 @@ async function initSupabase() {
     throw new Error('Supabase library failed to load');
   }
   supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // Keep the REALTIME socket's auth token in sync with the auth session. Since
+  // the PII lockdown, `entries` is RLS-gated to the `authenticated` role, and
+  // Realtime enforces that same RLS on the socket's token. supabase-js auto-
+  // refreshes the 1-hour session JWT for REST calls, but the long-lived
+  // realtime socket can end up holding a stale/expired token — RLS then
+  // silently drops all `entries` change events (the channel still shows
+  // SUBSCRIBED), so live check-ins stop appearing and the print station stops
+  // auto-printing until a manual page refresh. Re-applying the current token on
+  // every SIGNED_IN / TOKEN_REFRESHED keeps postgres_changes flowing. Fall back
+  // to the anon key when signed out so the socket always has a valid token.
+  try {
+    supa.auth.onAuthStateChange((_event, session) => {
+      try { supa.realtime.setAuth(session?.access_token || SUPABASE_KEY); } catch (_) {}
+    });
+  } catch (_) { /* older client without onAuthStateChange — ignore */ }
   // Test connection with the narrowest anon-safe RPC (works before login and
   // after the PII lockdown). get_ticket_status(null,null) returns nothing.
   const { error } = await supa.rpc('get_ticket_status', { p_id: null, p_ticket: null });
@@ -13211,10 +13230,22 @@ async function hashPassword(password) {
 // change events (Supabase does NOT replay them). So we re-pull to reconcile.
 let realtimeHadFirstSubscribe = false;
 function startRealtimeSync() {
+  clearTimeout(realtimeReconnectTimer);
   if (realtimeChannel) realtimeChannel.unsubscribe();
   // DEMO/PITCH MODE: skip the whole realtime channel so no real customer
   // (entries) rows can stream into the browser during a demo.
   if (DEMO_MODE) return;
+  // Safety net: the desk dashboard tab sits in the foreground all day, so it
+  // never fires the focus/visibility reconcile hooks. If the realtime socket
+  // goes quiet (expired token, silent drop) nothing self-heals until a manual
+  // refresh. A periodic reconcile catches any missed check-in — and prints its
+  // key tag on the station — within one interval even if realtime is dead.
+  // reconcileFromCloud is silent, throttled (8s), and de-dupes prints, so this
+  // is cheap and safe. Normal case: realtime already applied the change, so the
+  // re-pull is a no-op diff.
+  clearInterval(realtimePollTimer);
+  realtimePollTimer = setInterval(() => reconcileFromCloud('poll'), 60000);
+  const myGen = ++realtimeGen;   // this subscription's generation
   realtimeChannel = supa.channel('valet-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, payload => {
       handleRealtimeEntryChange(payload);
@@ -13231,11 +13262,32 @@ function startRealtimeSync() {
     // The print station confirming it printed a tag we asked for.
     .on('broadcast', { event: 'print-ack' }, ({ payload }) => handlePrintAck(payload))
     .subscribe(status => {
+      if (myGen !== realtimeGen) return;          // stale channel (superseded) — ignore
       if (status === 'SUBSCRIBED') {
+        realtimeReconnectDelay = 2000;            // healthy again — reset backoff
         if (realtimeHadFirstSubscribe) reconcileFromCloud('reconnect');
         realtimeHadFirstSubscribe = true;
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        // The channel dropped — commonly the auth token behind postgres_changes
+        // expired (~1h). Re-subscribe with a fresh token (onAuthStateChange has
+        // already re-applied it to the socket) after a capped backoff, and let
+        // the next SUBSCRIBED reconcile any events missed while we were down.
+        scheduleRealtimeReconnect();
       }
     });
+}
+
+// Re-subscribe the realtime channel after a dropped/errored connection, backing
+// off up to 30s so a persistent outage doesn't hammer the server. The periodic
+// poll (above) keeps the dashboard current in the meantime.
+function scheduleRealtimeReconnect() {
+  if (DEMO_MODE || !supa || !currentUser) return;
+  clearTimeout(realtimeReconnectTimer);
+  realtimeReconnectTimer = setTimeout(() => {
+    if (!navigator.onLine) { scheduleRealtimeReconnect(); return; }
+    startRealtimeSync();
+  }, realtimeReconnectDelay);
+  realtimeReconnectDelay = Math.min(realtimeReconnectDelay * 2, 30000);
 }
 
 // Silent re-pull from the cloud to correct any drift after a missed realtime
@@ -14148,6 +14200,8 @@ function retryConnection() {
 function logout() {
   if (!confirm('Sign out?')) return;
   localStorage.removeItem('valet_session');
+  clearInterval(realtimePollTimer);
+  clearTimeout(realtimeReconnectTimer);
   if (realtimeChannel) realtimeChannel.unsubscribe();
   // Drop the Supabase session too, so a signed-out device can't reach PII.
   try { supa.auth.signOut(); } catch (_) {}
