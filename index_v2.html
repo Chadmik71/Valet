@@ -4417,6 +4417,18 @@ function dismissSaveToast() {
     var zpl = buildZebraZpl({ ticket: 'TEST-001', bay: '1', plate: 'ABC123', brand: 'Toyota', name: 'Test Customer', timeStr: fmtTime(new Date()), staff: 'JD', barcode: 'TEST-001' });
     zebraPrint(zpl, 'Test tag sent — check the printer');
   };
+
+  // Silently warm the Browser Print connection so the FIRST real print of a
+  // session isn't a cold start. A fresh page load has zBase=null and Chrome's
+  // Local Network Access to the local agent un-primed, so the day's first auto-
+  // printed check-in races/fails (and, being marked printed, isn't retried) —
+  // which is why staff had to press Test Print each morning to "activate" it.
+  // Pinging /available here populates zBase and primes the local-network
+  // permission ahead of time: the same effect as a manual Test Print, minus the
+  // label. Best-effort only — no toast, no error surfaced.
+  window._warmZebraConn = function () {
+    try { getDevice(function () {}, function () {}); } catch (e) {}
+  };
 })();
 
 // Dispatcher — routes to the configured printer type. Call sites keep
@@ -4429,6 +4441,16 @@ window.printKeyTag = function (x) {
 };
 window.printTestTag = function () {
   return (settings.printerType === 'zebra' ? window._printTestTagZebra : window._printTestTagBixolon)();
+};
+// Pre-warm the local print-agent connection ahead of the first real print, so a
+// fresh-session cold start doesn't silently drop the day's first auto-printed
+// tag. Only meaningful for the Zebra desktop agent (the BIXOLON Android bridge
+// path doesn't use this cached-base scheme), and only worth doing on the print
+// station itself. Safe to call often — it's just a GET to localhost.
+window.warmPrinter = function () {
+  if (settings.printStation && settings.printerType === 'zebra' && window._warmZebraConn) {
+    window._warmZebraConn();
+  }
 };
 
 // Lightweight transient toast (reuses the save-toast styling/element)
@@ -13337,9 +13359,18 @@ async function reconcileFromCloud(reason) {
 // When the tab comes back to the foreground (phone woken, app re-opened), the
 // socket may have been asleep and missed check-outs/assignments — reconcile.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') reconcileFromCloud('visible');
+  if (document.visibilityState === 'visible') { reconcileFromCloud('visible'); warmPrinter(); }
 });
-window.addEventListener('focus', () => reconcileFromCloud('focus'));
+window.addEventListener('focus', () => { reconcileFromCloud('focus'); warmPrinter(); });
+
+// Print station: keep the local print-agent connection warm so the day's first
+// auto-print is never a cold start. Warm once shortly after load (a fresh
+// morning session starts with an un-primed connection — the exact reason staff
+// had to press Test Print to "activate" printing), then gently every few
+// minutes to re-prime after any PC sleep. No-op on non-station / non-Zebra
+// devices. Small delay lets settings finish loading first.
+setTimeout(() => { try { warmPrinter(); } catch (e) {} }, 4000);
+setInterval(() => { try { warmPrinter(); } catch (e) {} }, 4 * 60 * 1000);
 
 // Print Station auto-print. Only devices with "Print Station" turned ON
 // (typically the desktop wired to the Zebra) print incoming check-ins.
