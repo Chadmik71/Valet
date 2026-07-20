@@ -3251,6 +3251,9 @@ let isCloudSyncing = false;
 function saveData(changedId, opts) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   doAutoSave();
+  // localOnly: persist to this device only; the caller handles the cloud side
+  // itself (e.g. a delete that must NOT re-upsert every remaining row).
+  if (opts && opts.localOnly) return;
   // Queue for cloud sync
   if (supa && currentUser) {
     if (changedId) {
@@ -5291,7 +5294,9 @@ function undoCheckout(id) {
 function deleteEntry(id) {
   if (!confirm('Delete this entry permanently?')) return;
   entries = entries.filter(x => x.id !== id);
-  saveData();
+  // localOnly: deleting one car must not bulk re-upsert every OTHER car (which
+  // would push this device's possibly-stale copies over other devices' edits).
+  saveData(null, { localOnly: true });
   deleteEntryFromCloud(id);
   cloudAudit('delete', 'entry', id, {});
   renderDashboard();
@@ -8290,7 +8295,11 @@ function requestBag(id, { location, count, notes, source }) {
   renderBagQueue();
   if (typeof hapticFeedback === 'function') hapticFeedback('success');
   quickToast('Bag pickup added to the queue');
-  // Raise the attention alarm (deduped by job, so the realtime echo won't repeat it).
+  // Mark this job seen on the creating device BEFORE scanning, so the person who
+  // just typed the request doesn't get a full-screen alarm for their own entry
+  // (they already see it open). Realtime still alarms the OTHER staff devices.
+  // Mirrors assignBag's self-seed of bagAssignSeen.
+  try { bagAlertSeen.add(bagAlertKey(e, job)); } catch (_) {}
   scanBagAlarms();
 }
 
@@ -10981,11 +10990,24 @@ function importJSON(event) {
       const data = JSON.parse(e.target.result);
       if (!Array.isArray(data.entries)) throw new Error('Invalid backup file');
       if (!confirm(`Import ${data.entries.length} entries? This will REPLACE all current data.`)) return;
+      const oldIds = entries.map(e => e.id);
       entries = data.entries;
       if (data.settings) settings = { ...settings, ...data.settings };
-      saveData();
+      saveData(null, { localOnly: true });
+      // True "replace" in the cloud too: delete any prior row that isn't in the
+      // imported set, then upsert the imported rows. Without the delete this was
+      // really a merge — old cloud rows re-appeared on the next reconcile.
+      if (supa && currentUser) {
+        const newIds = new Set(entries.map(e => e.id));
+        oldIds.forEach(id => { if (!newIds.has(id)) entriesDeleteQueue.add(id); });
+        entries.forEach(e => entriesSyncQueue.add(e.id));
+        if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+        doCloudSync();
+      }
       saveSettingsToStorage();
       renderDashboard();
+      renderActive();
+      renderLog();
       alert('Imported successfully.');
     } catch(err) {
       alert('Error importing file: ' + err.message);
@@ -11065,12 +11087,23 @@ function importJSONMerge(event) {
 function confirmClearAll() {
   if (!confirm('Permanently delete ALL entries and reset ticket numbering? This cannot be undone.')) return;
   if (!confirm('Are you absolutely sure? Click OK to delete everything.')) return;
+  // Capture ids BEFORE clearing so we can delete them from the cloud too —
+  // otherwise the next reconcile/reload re-pulls every row from Supabase and the
+  // "clear" silently undoes itself (data, incl. customer PII, comes back).
+  const idsToDelete = entries.map(e => e.id);
   entries = [];
   settings = { prefix: 'A-', nextNum: 1 };
-  saveData();
+  saveData(null, { localOnly: true });
+  if (supa && currentUser && idsToDelete.length) {
+    idsToDelete.forEach(id => entriesDeleteQueue.add(id));
+    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+    doCloudSync();
+  }
   saveSettingsToStorage();
   renderDashboard();
   renderSettings();
+  renderActive();
+  renderLog();
   alert('All data cleared.');
 }
 
@@ -13619,6 +13652,10 @@ function acknowledgePickupAlarm() {
     showNextPickupAlarm();          // show the next one in the queue
   } else {
     document.getElementById('pickup-alarm-modal').classList.remove('show');
+    // A bag request that arrived while this pickup alarm occupied the screen was
+    // queued but never shown (alarms don't stack), and nothing else re-drains it
+    // — surface it now instead of leaving it silently stranded on the badge.
+    if (bagAlertQueue.length) { showNextBagAlarm(); return; }
     // Jump to Quick Pickup so staff can action it immediately.
     try { showView('quick-pickup'); } catch (e) {}
   }
@@ -14211,6 +14248,36 @@ async function completeLogin() {
   maybeWarnLowSmsBalance();
 }
 
+// Merge a fresh cloud snapshot with any local writes that are still in flight,
+// instead of blindly replacing `entries`. Without this, a reconcile that lands
+// while an edit is mid-sync (or an offline delete is queued) wipes that local
+// change: the edit vanishes from screen AND doCloudSync then serialises the
+// stale cloud row back over it. Rules:
+//   • id pending delete  → drop from the result (don't resurrect a deletion)
+//   • id pending upsert  → keep the LOCAL copy (protect the in-flight edit)
+//   • pending-upsert id not in the cloud yet → keep it (new local entry)
+// When nothing is in flight this returns the cloud snapshot unchanged.
+function mergeCloudWithPendingLocal(cloudEntries) {
+  const pendingUpsertIds = new Set(entriesSyncQueue);
+  const pendingDeleteIds = new Set(entriesDeleteQueue);
+  pendingWrites.forEach(w => {
+    if (w.op === 'delete' && w.id) pendingDeleteIds.add(w.id);
+    else if (w.op === 'upsert' && w.data && w.data.id) pendingUpsertIds.add(w.data.id);
+  });
+  if (!pendingUpsertIds.size && !pendingDeleteIds.size) return cloudEntries;
+  const localById = new Map(entries.map(e => [e.id, e]));
+  const seen = new Set();
+  const out = [];
+  cloudEntries.forEach(ce => {
+    seen.add(ce.id);
+    if (pendingDeleteIds.has(ce.id)) return;                                   // locally deleted — don't bring it back
+    if (pendingUpsertIds.has(ce.id) && localById.has(ce.id)) { out.push(localById.get(ce.id)); return; } // keep in-flight edit
+    out.push(ce);
+  });
+  pendingUpsertIds.forEach(id => { if (!seen.has(id) && localById.has(id)) out.push(localById.get(id)); }); // new local rows not yet in cloud
+  return out;
+}
+
 async function loadFromCloud(silent) {
   // Show pending banner so the user knows a sync is in progress. Background
   // reconciles (reconnect / tab-focus) pass silent=true to skip the banners.
@@ -14226,7 +14293,7 @@ async function loadFromCloud(silent) {
       cloudListStaff().catch(() => null),
     ]);
     cloudSettings = freshSettings;
-    entries = cloudEntries;
+    entries = mergeCloudWithPendingLocal(cloudEntries);   // preserve in-flight local edits/deletes
     if (staff) staffRoster = staff;
     settings.prefix = cloudSettings.ticket_prefix || settings.prefix || 'A-';
     if (cloudSettings.next_ticket_num !== undefined && cloudSettings.next_ticket_num !== null) {
