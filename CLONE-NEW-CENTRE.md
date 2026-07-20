@@ -35,6 +35,16 @@ centre needs its own project so its data is separate.
    > Easiest path: in the current project use the Supabase dashboard to dump each
    > table's SQL (structure + policies) and run it in the new project. Don't copy
    > the **rows** — a new centre starts empty.
+   > Also add the `entries.updated_at` trigger (last-write-wins / stale-echo
+   > sync safety) — a plain structure dump may miss it:
+   > ```sql
+   > create or replace function public.set_entries_updated_at()
+   > returns trigger language plpgsql as $$
+   > begin new.updated_at := now(); return new; end; $$;
+   > drop trigger if exists trg_entries_updated_at on public.entries;
+   > create trigger trg_entries_updated_at before insert or update
+   >   on public.entries for each row execute function public.set_entries_updated_at();
+   > ```
 3. Note the new project's **Project URL** and **anon key** (Project Settings →
    API). You'll paste these into the CENTRE block in step 4.
 
