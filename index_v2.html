@@ -4792,6 +4792,13 @@ function updateCheckoutTotalDisplay() {
   const wash = (washEntry && washEntry.carWash && washEntry.carWash.service) ? (washEntry.carWash.price || 0) : 0;
   const washLineHtml = wash ? `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;color:var(--bronze)"><span>Car wash (${washLabel(washEntry.carWash)}):</span><strong>+${fmtMoney(wash)}</strong></div>` : '';
 
+  // Tip is added on top of the customer's bill and IS charged to the card (the
+  // terminal reads this displayed total). It's kept separate from the saved
+  // parking fee (e.totalFee) so revenue and tips still report separately.
+  const tipRaw = (document.getElementById('checkout-tip')?.value || '').trim();
+  const tip = tipRaw ? (parseFloat(tipRaw) || 0) : 0;
+  const tipLineHtml = tip > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;color:var(--bronze)"><span>Tip:</span><strong>+${fmtMoney(tip)}</strong></div>` : '';
+
   // Start from subtotal (or override)
   let subtotal = overrideRaw !== '' ? parseFloat(overrideRaw) : calculatedFee;
   if (isNaN(subtotal)) subtotal = calculatedFee;
@@ -4800,10 +4807,11 @@ function updateCheckoutTotalDisplay() {
 
   // If "Complimentary" status, force comp (parking comped; any wash still charged)
   if (payStatus === 'comp') {
-    discountLines.innerHTML = '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:var(--green)"><span>Complimentary:</span><strong>−' + fmtMoney(subtotal) + '</strong></div>' + washLineHtml;
-    totalEl.textContent = fmtMoney(wash);
-    totalEl.style.color = wash ? 'var(--maroon)' : 'var(--green)';
-    labelEl.innerHTML = wash ? '<b>TOTAL (car wash only):</b>' : '<b>TOTAL (COMPLIMENTARY):</b>';
+    discountLines.innerHTML = '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:var(--green)"><span>Complimentary:</span><strong>−' + fmtMoney(subtotal) + '</strong></div>' + washLineHtml + tipLineHtml;
+    const compDue = wash + tip;
+    totalEl.textContent = fmtMoney(compDue);
+    totalEl.style.color = compDue ? 'var(--maroon)' : 'var(--green)';
+    labelEl.innerHTML = compDue ? '<b>TOTAL (wash/tip only):</b>' : '<b>TOTAL (COMPLIMENTARY):</b>';
     return;
   }
 
@@ -4822,7 +4830,7 @@ function updateCheckoutTotalDisplay() {
     discountLines.innerHTML = '';
   }
   // Car wash adds to the customer's bill (after discounts, never discounted).
-  discountLines.innerHTML += washLineHtml;
+  discountLines.innerHTML += washLineHtml + tipLineHtml;
 
   // Charge-to-shop: the shop covers some/all of the parking fee; the customer
   // still pays for their own car wash on top of whatever they owe.
@@ -4832,7 +4840,7 @@ function updateCheckoutTotalDisplay() {
     const coverRaw = document.getElementById('checkout-shop-cover').value.trim();
     const cover = coverRaw === '' ? null : parseFloat(coverRaw);
     const shopPays = (cover == null || isNaN(cover)) ? total : Math.min(cover, total);
-    const custDue = Math.max(0, total - shopPays) + wash;
+    const custDue = Math.max(0, total - shopPays) + wash + tip;
     discountLines.innerHTML += `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;color:#7a5a00"><span>Charged to ${shop}:</span><strong>−${fmtMoney(shopPays)}</strong></div>`;
     totalEl.textContent = fmtMoney(custDue);
     totalEl.style.color = custDue === 0 ? 'var(--green)' : 'var(--maroon)';
@@ -4842,7 +4850,7 @@ function updateCheckoutTotalDisplay() {
     return;
   }
 
-  const grand = total + wash;
+  const grand = total + wash + tip;
   totalEl.textContent = fmtMoney(grand);
   if (grand === 0 && breakdown.length > 0) {
     totalEl.style.color = 'var(--green)';
@@ -4969,8 +4977,23 @@ function removeDiscount(index) {
 // ─── Square Terminal payment (sandbox-ready) ───
 let squarePoll = null;
 let squareCheckoutId = null;
+// Freeze/unfreeze the amount-affecting controls while a terminal charge is in
+// flight, so the amount charged can't drift from the amount saved (staff can't
+// change a discount/override/tip or tap Confirm mid-tap). Leaves the Square
+// charge/cancel controls and the modal's close button usable.
+function setCheckoutChargeLock(locked) {
+  const modal = document.getElementById('checkout-modal');
+  if (!modal) return;
+  modal.querySelectorAll('input, select, textarea').forEach(el => { el.disabled = locked; });
+  modal.querySelectorAll('button').forEach(b => {
+    const oc = b.getAttribute('onclick') || '';
+    if (b.id === 'square-charge-btn' || b.id === 'square-cancel-btn' || /close/i.test(oc)) return;
+    b.disabled = locked;
+  });
+}
 function resetSquareChargeUI() {
   if (squarePoll) { clearTimeout(squarePoll); squarePoll = null; }
+  setCheckoutChargeLock(false);
   squareCheckoutId = null;
   const btn = document.getElementById('square-charge-btn');
   const lbl = document.getElementById('square-charge-label');
@@ -4984,6 +5007,7 @@ function resetSquareChargeUI() {
 // Cancel an in-progress terminal payment (also frees the device for the next car).
 function cancelSquareCheckout() {
   if (squarePoll) { clearTimeout(squarePoll); squarePoll = null; }
+  setCheckoutChargeLock(false);
   const id = squareCheckoutId; squareCheckoutId = null;
   if (id) {
     fetch(`${SUPABASE_URL}/functions/v1/square-terminal-checkout`, {
@@ -5051,6 +5075,7 @@ async function chargeOnTerminal() {
       btn.disabled = false; lbl.textContent = 'Try again'; return;
     }
     squareCheckoutId = d.checkoutId;
+    setCheckoutChargeLock(true);   // freeze the amount so it can't drift from what's charged
     lbl.textContent = 'Waiting for tap…';
     st.style.color = 'var(--text-muted)'; st.textContent = 'Ask the customer to tap their card on the terminal.';
     const cancel = document.getElementById('square-cancel-btn');
@@ -5075,6 +5100,7 @@ function pollSquareCheckout(checkoutId, tries) {
       squareCheckoutId = null;
     }
     if (st) { st.style.color = 'var(--red)'; st.textContent = 'Timed out — terminal payment cancelled. Try again.'; }
+    setCheckoutChargeLock(false);   // charge didn't complete — let staff adjust/retry
     if (btn) btn.disabled = false; if (lbl) lbl.textContent = 'Try again';
     if (cancelBtn) cancelBtn.style.display = 'none';
     return;
@@ -5105,6 +5131,7 @@ function pollSquareCheckout(checkoutId, tries) {
       }
       if (d.ok && (d.status === 'CANCELED' || d.status === 'CANCEL_REQUESTED')) {
         squareCheckoutId = null;
+        setCheckoutChargeLock(false);   // charge cancelled on terminal — unfreeze
         if (cancelBtn) cancelBtn.style.display = 'none';
         if (st) { st.style.color = 'var(--red)'; st.textContent = 'Payment cancelled on the terminal.'; }
         if (btn) btn.disabled = false; if (lbl) lbl.textContent = 'Try again';
@@ -5196,7 +5223,8 @@ function confirmCheckout() {
   e.feeOverridden = (payStatus === 'comp') || discountsToSave.length > 0 || (overrideRaw !== '' && parseFloat(overrideRaw) !== calculatedFee);
   e.tip = tip;
   e.paymentStatus = payStatus;
-  e.paymentMethod = payStatus === 'comp' ? null : payMethod;
+  // paymentMethod is finalised after the shop block below, from whether the
+  // customer actually pays anything out of pocket (see customerDue).
   e.attendantOut = attOut;
   e.discounts = discountsToSave;
   e.discountTotal = discountTotal;
@@ -5210,11 +5238,26 @@ function confirmCheckout() {
     const cover = coverRaw === '' ? null : parseFloat(coverRaw);
     e.shopCover = (cover == null || isNaN(cover)) ? null : Math.min(cover, total);
     e.paymentStatus = 'shop';     // billed to the shop's account, settled later
-    e.paymentMethod = null;
     if (!e.shopSettledAt) { e.shopSettledAt = null; e.shopSettledBy = null; }
   } else {
     e.shopAccount = null; e.shopCover = null;
   }
+
+  // Preserve HOW the customer paid whatever they actually owe out of pocket — a
+  // wash/tip on a comp, or the uncovered remainder on a shop bill — instead of
+  // blanking the method just because the status is comp/shop. Null only when the
+  // customer genuinely pays nothing, so card-vs-cash reconciliation stays right.
+  const washCost = (e.carWash && e.carWash.service) ? (e.carWash.price || 0) : 0;
+  let customerDue;
+  if (e.paymentStatus === 'shop') {
+    const shopPays = (e.shopCover == null) ? total : Math.min(e.shopCover, total);
+    customerDue = Math.max(0, total - shopPays) + washCost + tip;
+  } else if (payStatus === 'comp') {
+    customerDue = washCost + tip;
+  } else {
+    customerDue = total + washCost + tip;
+  }
+  e.paymentMethod = customerDue > 0 ? payMethod : null;
 
   saveData(e.id, { immediate: true });
   saveSettingsToStorage();
@@ -12631,7 +12674,15 @@ function loyaltyStandingByKey(key, exceptId) {
   if (!cfg.enabled || !key) return null;
   const visits = entries.filter(x => x.id !== exceptId && x.timeOut && loyaltyKey(x) === key);
   const redeemed = visits.filter(isLoyaltyFree).length;
-  const paidUses = Math.max(0, visits.length - redeemed);   // visits that count toward a reward
+  // Only GENUINELY PAID visits earn loyalty progress: exclude the loyalty-free
+  // ones, comps, unpaid, and any $0 visit — otherwise a customer comped N times
+  // would earn a free valet without ever paying.
+  const paidUses = visits.filter(v =>
+    !isLoyaltyFree(v) &&
+    v.paymentStatus !== 'comp' &&
+    v.paymentStatus !== 'unpaid' &&
+    Number(v.totalFee) > 0
+  ).length;
   const earned = Math.floor(paidUses / cfg.threshold);
   const available = Math.max(0, earned - redeemed);          // free valets ready to use now
   return {
@@ -14626,7 +14677,25 @@ window.addEventListener('load', () => {
           // render from local cache immediately, then fetch fresh data (including
           // settings) from cloud in the background.
           initSupabase()
-            .then(() => {
+            .then(async () => {
+              // Re-validate the cached session against the live staff record so a
+              // disabled or role-changed account loses access immediately, rather
+              // than lingering for the 24h token life. If the check itself can't
+              // run (offline / list unavailable), fall back to the cached session
+              // so a network blip doesn't lock out valid staff.
+              try {
+                const roster = await cloudListStaff();
+                if (Array.isArray(roster)) {
+                  const rec = roster.find(r => r.username === s.user.username);
+                  if (!rec || rec.is_active === false) {
+                    localStorage.removeItem('valet_session');
+                    currentUser = null;
+                    startLoginFlow();
+                    return;
+                  }
+                  if (rec.role && rec.role !== s.user.role) s.user.role = rec.role;  // pick up a demotion/promotion
+                }
+              } catch (_) { /* offline — trust the cached session */ }
               // Only set currentUser AFTER supa is confirmed working
               currentUser = s.user;
               return completeLogin();
@@ -14869,7 +14938,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
       <div class="form-field">
         <label class="form-label">Tip</label>
-        <input type="number" id="checkout-tip" class="form-input" placeholder="$0.00" step="0.01" min="0">
+        <input type="number" id="checkout-tip" class="form-input" placeholder="$0.00" step="0.01" min="0" oninput="updateCheckoutTotalDisplay()">
       </div>
     </div>
 
