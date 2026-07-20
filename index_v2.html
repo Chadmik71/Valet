@@ -3617,6 +3617,14 @@ function toggleUiMode() {
 // NEW ENTRY
 // ═══════════════════════════════════════════════════
 function prepareNewEntry() {
+  // Start every New Entry from a clean slate. Without this, opening New Entry
+  // regenerated the ticket/time but LEFT the previous car's typed customer
+  // name/phone and — worse — its pending photo, GPS and damage markers in
+  // place, so a half-logged car abandoned via a tab switch could bleed its
+  // details (and liability photos, and the QR-ticket SMS recipient) onto the
+  // next car. resetForm() clears the fields + pending extras; the arrival
+  // check-in flow re-populates afterwards, so it stays safe there.
+  try { resetForm(); } catch (e) {}
   document.getElementById('f-ticket').value = nextTicketNumber();
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, '0');
@@ -4023,8 +4031,7 @@ function saveEntry() {
   // isn't useful, so a car checked in before it's parked prints later when the
   // bay is added via Edit Car.
   if (settings.printStation && printerConfigured() && entry.bay) {
-    markPrinted(entry);   // record what we printed so the realtime echo doesn't reprint it
-    printKeyTag(entry);
+    printAndTrack(entry);   // marks + prints; un-marks on failure so a failed tag retries
   }
 
   resetForm();
@@ -4182,33 +4189,39 @@ function dismissSaveToast() {
     connectionMode = settings.printerMode || 'http:';
   }
 
-  function sendJob(printerName, friendlyAction) {
+  function sendJob(printerName, friendlyAction, onDone) {
     var submit = getPosData();
     requestPrint(printerName, submit, function (res) {
       if (!res) return; // requestPrint fires once with "" before the real result
       var r = String(res);
       if (/Cannot connect to server/i.test(r)) {
         flashScanStatus('Printer bridge not found — open mPrintServer and turn its Web Server ON', 'error');
+        if (onDone) onDone(false);
       } else if (/No printers/i.test(r)) {
         flashScanStatus('No printer named "' + printerName + '" in WebPrint — check Settings', 'error');
+        if (onDone) onDone(false);
       } else if (/duplicated/i.test(r)) {
-        /* same job already queued — ignore */
+        /* same job already queued — it will still print, so treat as success */
+        if (onDone) onDone(true);
       } else if (/error|fail|not ?ready|cover|paper|empty/i.test(r)) {
         flashScanStatus('' + r.replace(/^[^:]*:/, ''), 'error');
+        if (onDone) onDone(false);
       } else {
         flashScanStatus(friendlyAction, 'success');
+        if (onDone) onDone(true);
       }
     });
   }
 
   // Build and print one key tag for an entry (accepts an entry object or an id)
-  window._printKeyTagBixolon = function (entryOrId) {
+  window._printKeyTagBixolon = function (entryOrId, onDone) {
     var e = (typeof entryOrId === 'string') ? entries.find(function (x) { return x.id === entryOrId; }) : entryOrId;
-    if (!e) { flashScanStatus('Entry not found', 'error'); return; }
+    if (!e) { flashScanStatus('Entry not found', 'error'); if (onDone) onDone(false); return; }
     var name = (settings.printerName || '').trim();
     if (!name) {
       alert('First set your BIXOLON printer name in Settings → "Key-Tag Printer".');
       showView('settings');
+      if (onDone) onDone(false);
       return;
     }
     applyTransportFromSettings();
@@ -4228,7 +4241,7 @@ function dismissSaveToast() {
     print1DBarcode(e.ticket, 8, 2, 70, 2, 1);                       // Code128 = ticket, HRI below (scans back into Scan Mode)
     printText("\n\n\n", 0, 0, false, false, false, 0, 1);            // feed clear of the tear bar
     cutPaper(1);                                                     // ignored on cutter-less mobile printers
-    sendJob(name, 'Key tag printed');
+    sendJob(name, 'Key tag printed', onDone);
   };
 
   // Test print from Settings
@@ -4356,7 +4369,7 @@ function dismissSaveToast() {
     }, err);
   }
 
-  function zebraPrint(zpl, friendlyAction) {
+  function zebraPrint(zpl, friendlyAction, onDone) {
     var name = (settings.printerZebraName || '').trim();
     function onErr(e) {
       if (e === 'connect' || e === 'timeout') {
@@ -4368,10 +4381,11 @@ function dismissSaveToast() {
       } else {
         flashScanStatus('Zebra error: ' + e, 'error');
       }
+      if (onDone) onDone(false);
     }
     getDevice(function (device) {
       zReq('POST', '/write', JSON.stringify({ device: device, data: zpl }),
-        function () { flashScanStatus(friendlyAction, 'success'); }, onErr);
+        function () { flashScanStatus(friendlyAction, 'success'); if (onDone) onDone(true); }, onErr);
     }, onErr);
   }
 
@@ -4406,11 +4420,11 @@ function dismissSaveToast() {
     return z;
   }
 
-  window._printKeyTagZebra = function (entryOrId) {
+  window._printKeyTagZebra = function (entryOrId, onDone) {
     var e = (typeof entryOrId === 'string') ? entries.find(function (x) { return x.id === entryOrId; }) : entryOrId;
-    if (!e) { flashScanStatus('Entry not found', 'error'); return; }
+    if (!e) { flashScanStatus('Entry not found', 'error'); if (onDone) onDone(false); return; }
     var zpl = buildZebraZpl({ ticket: e.ticket, bay: e.bay, plate: e.rego, brand: e.brand, name: e.name, timeStr: fmtTime(new Date(e.timeIn)), staff: e.attendantIn || (currentUser && currentUser.displayName) || '', barcode: e.ticket });
-    zebraPrint(zpl, 'Key tag printed');
+    zebraPrint(zpl, 'Key tag printed', onDone);
   };
 
   window._printTestTagZebra = function () {
@@ -4436,8 +4450,8 @@ function dismissSaveToast() {
 window.printerConfigured = function () {
   return (settings.printerType === 'zebra') ? true : !!((settings.printerName || '').trim());
 };
-window.printKeyTag = function (x) {
-  return (settings.printerType === 'zebra' ? window._printKeyTagZebra : window._printKeyTagBixolon)(x);
+window.printKeyTag = function (x, onDone) {
+  return (settings.printerType === 'zebra' ? window._printKeyTagZebra : window._printKeyTagBixolon)(x, onDone);
 };
 window.printTestTag = function () {
   return (settings.printerType === 'zebra' ? window._printTestTagZebra : window._printTestTagBixolon)();
@@ -5340,6 +5354,13 @@ function editEntryTime(id) {
     }
   }
 
+  // Reject an out-before-in edit (matches saveEditCar's guard) — otherwise the
+  // record saves a negative duration, which bills $0 parking and shows "—".
+  if (newOutDate && newOutDate < newInDate) {
+    alert('Time Out cannot be before Time In.');
+    return;
+  }
+
   e.timeIn = newInDate.toISOString();
   if (newOutDate) e.timeOut = newOutDate.toISOString();
   saveData(e.id, { immediate: true });
@@ -5485,7 +5506,7 @@ function saveEditCar() {
     if (outD < inD) { err.textContent = 'Time Out cannot be before Time In.'; return; }
   }
 
-  const tagChanged = ticket !== e.ticket || bay !== e.bay || rego !== e.rego;
+  const tagChanged = ticket !== e.ticket || bay !== e.bay || rego !== e.rego || brand !== e.brand || name !== e.name;
   e.ticket = ticket;
   e.name = name;
   e.phone = phone;
@@ -5512,8 +5533,7 @@ function saveEditCar() {
   // phone has no printer agent, so printing locally would flash a "Zebra not
   // connecting" error; the desk station reprints via the realtime UPDATE instead.
   if (tagChanged && settings.printStation && printerConfigured()) {
-    markPrinted(e);   // record what we printed so the realtime echo doesn't reprint it
-    printKeyTag(e);
+    printAndTrack(e);   // marks + prints; un-marks on failure so a failed tag retries
   }
 }
 
@@ -6655,6 +6675,13 @@ function renderBrandList(list, containerId) {
   const brandMap = {};
   list.forEach(e => { const b = canonicalBrand(e.brand); if (b) brandMap[b] = (brandMap[b] || 0) + 1 });
   const sorted = Object.entries(brandMap).sort((a,b) => b[1] - a[1]);
+  // If the list is non-empty but every brand is blank, sorted is [] — bail out
+  // cleanly instead of throwing on sorted[0], which would abort renderReports and
+  // blank every panel below the brand list.
+  if (!sorted.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon"></div><div>No brands recorded</div></div>';
+    return;
+  }
   const max = sorted[0][1];
 
   container.innerHTML = sorted.map(([brand, count]) => `
@@ -6896,7 +6923,7 @@ function assignBay(id) {
   // station prints it via the realtime UPDATE (bay change → tag content changed).
   // A phone printing locally would just flash a "Zebra not connecting" error.
   const printsHere = settings.printStation && printerConfigured();
-  if (printsHere) { markPrinted(e); printKeyTag(e); }
+  if (printsHere) { printAndTrack(e); }
   renderActive();
   if (typeof renderDashboard === 'function') renderDashboard();
   quickToast('✓ Bay ' + bay + ' assigned' + (printsHere ? ' · key tag printing' : ''));
@@ -8890,12 +8917,12 @@ function setReportRange(range) {
 function reportData() {
   const from = document.getElementById('report-from').value;
   const to = document.getElementById('report-to').value;
-  const list = entries.filter(e => { const d = e.timeIn.slice(0, 10); return d >= from && d <= to; });
+  const list = entries.filter(e => { const d = localDateStr(e.timeIn); return d >= from && d <= to; });
   const completed = list.filter(e => e.timeOut);
-  const revenue = list.reduce((s, e) => s + (e.totalFee || 0), 0);
+  const revenue = completed.reduce((s, e) => s + (e.totalFee || 0), 0);
   const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
   const byDay = {}, byDayRev = {};
-  list.forEach(e => { const d = e.timeIn.slice(0, 10); byDay[d] = (byDay[d] || 0) + 1; byDayRev[d] = (byDayRev[d] || 0) + (e.totalFee || 0); });
+  list.forEach(e => { const d = localDateStr(e.timeIn); byDay[d] = (byDay[d] || 0) + 1; byDayRev[d] = (byDayRev[d] || 0) + (e.totalFee || 0); });
   const daily = Object.keys(byDay).sort().map(d => [d, byDay[d], byDayRev[d] || 0]);
   const byBrand = {}; list.forEach(e => { const b = canonicalBrand(e.brand) || '—'; byBrand[b] = (byBrand[b] || 0) + 1; });
   const brands = Object.entries(byBrand).sort((a, b) => b[1] - a[1]);
@@ -9020,7 +9047,7 @@ function computeDailyStats(list, from, to, filtered) {
   const curTotal = list.reduce((s, r) => s + r[1], 0);
   let prevTotal = 0;
   entries.forEach(e => {
-    const d = e.timeIn.slice(0, 10);
+    const d = localDateStr(e.timeIn);   // Sydney-local day, matching Log/Dashboard (timeIn is UTC ISO)
     if (d >= pf && d <= pt) prevTotal++;
   });
   const pct = prevTotal ? Math.round((curTotal - prevTotal) / prevTotal * 100) : null;
@@ -9209,7 +9236,7 @@ function renderReports() {
   }
 
   const filtered = entries.filter(e => {
-    const d = e.timeIn.slice(0, 10);
+    const d = localDateStr(e.timeIn);   // Sydney-local day, matching Log/Dashboard (timeIn is UTC ISO)
     return d >= from && d <= to;
   });
 
@@ -9218,8 +9245,10 @@ function renderReports() {
   document.getElementById('rep-completed').textContent = filtered.filter(e => e.timeOut).length;
   document.getElementById('rep-range').textContent = `${from} → ${to}`;
 
-  // Total revenue from completed trips in range
-  const totalRev = filtered.reduce((sum, e) => sum + (e.totalFee || 0), 0);
+  // Total revenue from completed trips in range (only checked-out cars carry a
+  // final fee; summing all in-range cars would over-count any on-site/imported
+  // rows that already have a totalFee).
+  const totalRev = filtered.reduce((sum, e) => sum + (e.timeOut ? (e.totalFee || 0) : 0), 0);
   document.getElementById('rep-revenue').textContent = fmtMoney(totalRev);
 
   // Daily average
@@ -9324,7 +9353,7 @@ function renderReports() {
   // Daily volume — cars and revenue per calendar day
   const dailyMap = {}, dailyRev = {};
   filtered.forEach(e => {
-    const d = e.timeIn.slice(0, 10);
+    const d = localDateStr(e.timeIn);   // Sydney-local day, matching Log/Dashboard (timeIn is UTC ISO)
     dailyMap[d] = (dailyMap[d] || 0) + 1;
     dailyRev[d] = (dailyRev[d] || 0) + (e.totalFee || 0);
   });
@@ -9535,7 +9564,7 @@ async function renderMonthlyReport() {
   const counts = {}, rev = {};
   entries.forEach(e => {
     if (!e.timeIn) return;
-    const d = e.timeIn.slice(0, 10);
+    const d = localDateStr(e.timeIn);   // Sydney-local day, matching Log/Dashboard (timeIn is UTC ISO)
     if (d.slice(0, 7) === ym) { counts[d] = (counts[d] || 0) + 1; rev[d] = (rev[d] || 0) + (e.totalFee || 0); }
   });
 
@@ -9888,7 +9917,9 @@ function renderDiscountSummary(filtered) {
   });
 
   const sortedReasons = Object.entries(byReason).sort((a, b) => b[1].total - a[1].total);
-  const maxTotal = sortedReasons[0][1].total;
+  // Guard against every reason totalling $0 (e.g. percentage/loyalty discounts on
+  // a $0 subtotal) → maxTotal 0 → width:NaN%. Match the Math.max(1,…) used elsewhere.
+  const maxTotal = Math.max(1, ...sortedReasons.map(r => r[1].total));
 
   container.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px">
@@ -10691,8 +10722,9 @@ function renderComparison() {
   const curEntries = entriesIn(cur.start, cur.end);
   const prevEntries = entriesIn(prev.start, prev.end);
 
-  const curRev = curEntries.reduce((s, e) => s + (e.totalFee || 0), 0);
-  const prevRev = prevEntries.reduce((s, e) => s + (e.totalFee || 0), 0);
+  // Revenue = completed (checked-out) cars only; on-site cars have no final fee.
+  const curRev = curEntries.reduce((s, e) => s + (e.timeOut ? (e.totalFee || 0) : 0), 0);
+  const prevRev = prevEntries.reduce((s, e) => s + (e.timeOut ? (e.totalFee || 0) : 0), 0);
   const curTips = curEntries.reduce((s, e) => s + (e.tip || 0), 0);
   const prevTips = prevEntries.reduce((s, e) => s + (e.tip || 0), 0);
   const curBrands = new Set(curEntries.map(e => canonicalBrand(e.brand)).filter(Boolean)).size;
@@ -11971,7 +12003,7 @@ function showWelcomePopup(last, visitCount, daysSince, totalSpent, allVisits) {
       <div style="padding:10px;background:var(--sandstone);border-radius:6px">
         <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:600">Visits</div>
         <div style="font-size:24px;font-weight:bold;color:var(--maroon);font-family:'Inter',sans-serif;line-height:1;margin-top:3px">${visitCount + 1}</div>
-        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${ordinal(visitCount + 1)} today</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${ordinal(visitCount + 1)} visit</div>
       </div>
       <div style="padding:10px;background:var(--sandstone);border-radius:6px">
         <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:600">Lifetime</div>
@@ -11986,11 +12018,13 @@ function showWelcomePopup(last, visitCount, daysSince, totalSpent, allVisits) {
   `;
 
   document.getElementById('welcome-vehicle').innerHTML = last.brand
-    ? `<strong>${last.brand}${last.model ? ' ' + last.model : ''}</strong>${last.colour ? ' · ' + last.colour : ''} · <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${last.rego}</span>`
-    : `<span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${last.rego}</span>`;
+    ? `<strong>${arvEsc(last.brand)}${last.model ? ' ' + arvEsc(last.model) : ''}</strong>${last.colour ? ' · ' + arvEsc(last.colour) : ''} · <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(last.rego)}</span>`
+    : `<span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(last.rego)}</span>`;
 
+  // Escape each prompt — they embed customer name/brand/model/bay and free-text
+  // notes, any of which could carry an <img onerror=…> without this.
   document.getElementById('welcome-prompts').innerHTML = prompts.map(p =>
-    `<div style="padding:8px 12px;background:var(--bg);border-left:3px solid var(--bronze);margin-bottom:6px;border-radius:3px;font-size:13px;line-height:1.4">${p}</div>`
+    `<div style="padding:8px 12px;background:var(--bg);border-left:3px solid var(--bronze);margin-bottom:6px;border-radius:3px;font-size:13px;line-height:1.4">${arvEsc(p)}</div>`
   ).join('');
 
   // Reset dismiss state
@@ -12357,8 +12391,8 @@ function showCustomerDetail(regoArg) {
           <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin-bottom:6px">Other Vehicles · Same Phone (${others.length})</div>
           ${others.map(o => {
             const veh = (o.brand + (o.model ? ' ' + o.model : '') + (o.colour ? ' · ' + o.colour : '')).trim() || '—';
-            return `<div onclick="showCustomerDetail('${o.rego.replace(/'/g, "\\'")}')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;background:var(--sandstone);border-radius:4px;margin-bottom:6px;cursor:pointer">
-              <div><span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace;font-weight:bold;color:var(--maroon)">${o.rego}</span><span style="color:var(--text-muted);font-size:12px"> · ${veh}</span></div>
+            return `<div onclick="showCustomerDetail('${escAttr(o.rego).replace(/'/g, "\\'")}')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;background:var(--sandstone);border-radius:4px;margin-bottom:6px;cursor:pointer">
+              <div><span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace;font-weight:bold;color:var(--maroon)">${arvEsc(o.rego)}</span><span style="color:var(--text-muted);font-size:12px"> · ${arvEsc(veh)}</span></div>
               <div style="font-size:12px;color:var(--text-muted);white-space:nowrap">${o.count} visit${o.count !== 1 ? 's' : ''} · ${fmtDate(new Date(o.last))}</div>
             </div>`;
           }).join('')}
@@ -12395,13 +12429,13 @@ function showCustomerDetail(regoArg) {
         <button class="btn btn-secondary btn-sm" onclick="editCustomerByRego('${rego.replace(/'/g, "\\'")}')" title="Fix the name, phone or vehicle if it was entered wrong">Edit details</button>
       </div>
       <div style="line-height:1.7">
-        ${last.name ? '<strong>Name:</strong> ' + last.name + '<br>' : ''}
-        ${last.phone ? '<strong>Phone:</strong> ' + last.phone + '<br>' : ''}
-        <strong>Vehicle:</strong> ${last.brand} ${last.model || ''} ${last.colour ? '· ' + last.colour : ''}<br>
-        <strong>Plate:</strong> <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${last.rego}</span><br>
+        ${last.name ? '<strong>Name:</strong> ' + arvEsc(last.name) + '<br>' : ''}
+        ${last.phone ? '<strong>Phone:</strong> ' + arvEsc(last.phone) + '<br>' : ''}
+        <strong>Vehicle:</strong> ${arvEsc(last.brand)} ${arvEsc(last.model || '')} ${last.colour ? '· ' + arvEsc(last.colour) : ''}<br>
+        <strong>Plate:</strong> <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(last.rego)}</span><br>
         <strong>First visit:</strong> ${fmtDate(new Date(first.timeIn))}<br>
         <strong>Last visit:</strong> ${fmtDate(new Date(last.timeIn))}<br>
-        ${baysUsed.length > 1 ? '<strong>Bays used:</strong> ' + baysUsed.join(', ') + '<br>' : ''}
+        ${baysUsed.length > 1 ? '<strong>Bays used:</strong> ' + arvEsc(baysUsed.join(', ')) + '<br>' : ''}
       </div>
     </div>
 
@@ -12423,7 +12457,7 @@ function showCustomerDetail(regoArg) {
           const dur = tOut ? fmtDuration(tOut - tIn) : 'On site';
           return `<tr>
             <td style="padding:5px;border-bottom:1px solid #ebebe9">${fmtDate(tIn)}</td>
-            <td style="padding:5px;border-bottom:1px solid #ebebe9;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${e.ticket}</td>
+            <td style="padding:5px;border-bottom:1px solid #ebebe9;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(e.ticket)}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9">${dur}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${e.totalFee ? fmtMoney(e.totalFee) : '—'}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${e.tip ? fmtMoney(e.tip) : '—'}</td>
@@ -12987,8 +13021,28 @@ let pendingWrites = []; // Offline queue
 // later (from ANY device) does print; and unrelated updates (pickup requests,
 // checkout) never reprint. Keyed by entry id.
 let autoPrintedSig = new Map();
-function tagSig(e) { return (e.bay || '') + '|' + (e.ticket || '') + '|' + (e.rego || ''); }
+// Signature of everything PRINTED on the key tag — used to decide whether an
+// auto-reprint is needed. Must include every field the tag shows (bay, ticket,
+// rego AND brand/name), otherwise correcting e.g. a mis-read brand leaves the
+// stale tag and never reprints.
+function tagSig(e) { return (e.bay || '') + '|' + (e.ticket || '') + '|' + (e.rego || '') + '|' + (e.brand || '') + '|' + (e.name || ''); }
 function markPrinted(e) { if (e && e.id) autoPrintedSig.set(e.id, tagSig(e)); }
+
+// Mark the tag as printed (so the realtime echo doesn't reprint it) THEN print,
+// un-marking again if the print fails. Marking up-front is what stops a locally
+// checked-in car from printing twice (local print + its own realtime echo); but
+// if that print then fails — Zebra asleep, out of paper, agent hiccup — the old
+// code left the tag flagged forever, so neither the echo nor the 60s reconcile
+// ever retried and the car silently got no key tag. Clearing the sig on failure
+// lets the next reconcile/echo try again. Use this everywhere we auto-print.
+function printAndTrack(e) {
+  if (!e || !e.id) { printKeyTag(e); return; }
+  markPrinted(e);
+  const sigAtPrint = tagSig(e);
+  printKeyTag(e, function (ok) {
+    if (!ok && autoPrintedSig.get(e.id) === sigAtPrint) autoPrintedSig.delete(e.id);
+  });
+}
 
 // ─── Field name conversion (JS camelCase ↔ DB snake_case) ───
 function jsToDb(e) {
@@ -13383,8 +13437,7 @@ function maybeAutoPrintTag(entry) {
   if (entry.timeOut) return;                                // already checked out — skip
   if (!entry.bay) return;                                   // no bay yet — print once it's assigned
   if (autoPrintedSig.get(entry.id) === tagSig(entry)) return; // this exact tag already printed here
-  markPrinted(entry);
-  printKeyTag(entry);
+  printAndTrack(entry);   // marks + prints; un-marks on failure so a failed tag retries next reconcile
 }
 
 // ─── Print-anywhere: route a phone's manual print to the print station ───
@@ -13422,8 +13475,7 @@ function handleRemotePrintRequest(payload) {
   if (!settings.printStation || !printerConfigured()) return;   // only a real station prints
   const e = entries.find(x => x.id === payload.id);
   if (!e || !e.bay) return;
-  markPrinted(e);
-  printKeyTag(e);
+  printAndTrack(e);   // marks + prints; un-marks on failure so a failed tag retries
   try {
     realtimeChannel.send({ type: 'broadcast', event: 'print-ack',
       payload: { id: e.id, ticket: e.ticket, station: (currentUser && currentUser.displayName) || 'the desk' } });
