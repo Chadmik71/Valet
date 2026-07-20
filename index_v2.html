@@ -6910,6 +6910,7 @@ function renderActive() {
   if (active.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10" class="empty" style="border-bottom:none">No active vehicles — all cars have been picked up</td></tr>';
     if (cardWrap) cardWrap.innerHTML = '<div class="empty" style="text-align:center;color:var(--text-muted);padding:18px">No active vehicles — all cars have been picked up</div>';
+    renderCheckedOutToday();   // still refresh the "Checked Out Today" list when every car is out
     return;
   }
   const now = new Date();
