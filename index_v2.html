@@ -12451,13 +12451,20 @@ function showCustomerDetail(regoArg) {
   if (phoneDigits.length >= 8) {
     const curKey = normaliseRego(rego);
     const byRego = {};
+    const namesOnPhone = new Set();
     entries.forEach(e => {
       if ((e.phone || '').replace(/\D/g, '') !== phoneDigits) return;
+      const nm = (e.name || '').trim().toLowerCase();
+      if (nm) namesOnPhone.add(nm);
       const k = normaliseRego(e.rego);
       if (!k || k === curKey) return;
       (byRego[k] = byRego[k] || []).push(e);
     });
-    const others = Object.keys(byRego).map(k => {
+    // A number shared by 3+ distinct customer names is almost certainly a shared
+    // or STAFF mobile (staff enter their own number when a customer gives none),
+    // not one person with several cars — so don't cross-link unrelated customers'
+    // vehicles into this record. Couples/families (1–2 names) still show.
+    const others = namesOnPhone.size >= 3 ? [] : Object.keys(byRego).map(k => {
       const v = byRego[k].sort((a, b) => new Date(b.timeIn) - new Date(a.timeIn));
       return { rego: v[0].rego, brand: v[0].brand || '', model: v[0].model || '', colour: v[0].colour || '', count: v.length, last: v[0].timeIn };
     }).sort((a, b) => new Date(b.last) - new Date(a.last));
@@ -13188,6 +13195,7 @@ function dbToJs(d) {
     incident: d.incident || null,
     vip: !!d.vip,
     squarePayment: d.square_payment,
+    updatedAt: d.updated_at || null,   // server last-modified stamp for conflict/stale-echo checks
   };
 }
 
@@ -13584,6 +13592,14 @@ function handleRealtimeEntryChange(payload) {
     if (payload.eventType === 'INSERT') { try { removeArrivalByRego(newEntry.rego); } catch (e) {} }
     const idx = entries.findIndex(e => e.id === newEntry.id);
     const prevEntry = idx >= 0 ? entries[idx] : null;   // our copy BEFORE this change
+    // Drop a stale / out-of-order UPDATE echo: if our current copy carries a
+    // NEWER server updated_at than this incoming one, the incoming is older and
+    // would clobber a fresher state (e.g. a bay we already applied while an
+    // earlier echo was still in flight). INSERTs always apply — no prior copy.
+    if (payload.eventType === 'UPDATE' && prevEntry && prevEntry.updatedAt && newEntry.updatedAt
+        && new Date(newEntry.updatedAt) < new Date(prevEntry.updatedAt)) {
+      return;
+    }
     if (idx >= 0) entries[idx] = newEntry;
     else entries.unshift(newEntry);
     // Re-sort by time_in desc
