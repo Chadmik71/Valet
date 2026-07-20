@@ -6896,7 +6896,19 @@ function toggleSort(col) {
   renderActive();
 }
 
+// The Active view is made of TWO independent sections:
+//   1. the on-site car list        (renderActiveList — may bail out early when empty)
+//   2. the "Checked Out Today" list (renderCheckedOutToday)
+// They are rendered as separate top-level calls so that an early return inside
+// one can NEVER silently skip the other. (A prior bug blanked Checked Out Today
+// whenever the last car was marked out, because that render was buried at the
+// bottom of the active-list code behind an early return.) Keep them decoupled.
 function renderActive() {
+  renderActiveList();
+  renderCheckedOutToday();
+}
+
+function renderActiveList() {
   renderNoBayBanner();
   renderOverstayBanner();
   const active = entries.filter(e => !e.timeOut);
@@ -6910,7 +6922,6 @@ function renderActive() {
   if (active.length === 0) {
     tbody.innerHTML = '<tr><td colspan="10" class="empty" style="border-bottom:none">No active vehicles — all cars have been picked up</td></tr>';
     if (cardWrap) cardWrap.innerHTML = '<div class="empty" style="text-align:center;color:var(--text-muted);padding:18px">No active vehicles — all cars have been picked up</div>';
-    renderCheckedOutToday();   // still refresh the "Checked Out Today" list when every car is out
     return;
   }
   const now = new Date();
@@ -7051,8 +7062,6 @@ function renderActive() {
 
   tbody.innerHTML = built.map(b => b.row).join('');
   if (cardWrap) cardWrap.innerHTML = built.map(b => b.card).join('');
-
-  renderCheckedOutToday();
 }
 
 // Cars that have already been checked out TODAY — shown below the on-site list.
