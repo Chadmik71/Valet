@@ -2287,6 +2287,14 @@ body.dark-mode .scan-banner {
 
   <div class="section rep-section" data-repgroup="payments">
     <div class="section-header">
+      <div class="section-title">🧾 Level 1 Promotion</div>
+      <div style="font-size:11px;color:var(--text-muted);font-style:italic">Free valet &amp; parking with a Level 1 shop receipt · uses per shop</div>
+    </div>
+    <div id="rep-l1promo"><div class="empty">No Level 1 validations in this range</div></div>
+  </div>
+
+  <div class="section rep-section" data-repgroup="payments">
+    <div class="section-header">
       <div class="section-title">Discounts &amp; Validations Summary</div>
     </div>
     <div id="rep-discount-summary"><div class="empty">No discounts in this range</div></div>
@@ -4651,6 +4659,8 @@ function checkout(id) {
   }
   const coverEl = document.getElementById('checkout-shop-cover');
   if (coverEl) coverEl.value = (e.shopCover != null && !isNaN(e.shopCover)) ? e.shopCover : '';
+  // Level 1 receipt promo: fresh shop list, blank amount, panel closed.
+  resetL1PromoUI();
   // Square Terminal charge button — only when a terminal device is configured.
   const sqRow = document.getElementById('square-pay-row');
   if (sqRow) sqRow.style.display = (settings.squareDeviceId || '').trim() ? 'block' : 'none';
@@ -4971,6 +4981,55 @@ function confirmAddDiscount() {
 
 function removeDiscount(index) {
   pendingDiscounts.splice(index, 1);
+  renderDiscountList();
+}
+
+// ─── Level 1 receipt promotion ───
+// Centre promo: a customer showing a receipt from any Level 1 shop gets the
+// valet AND parking complimentary (100% off the valet bill; a car wash, if
+// any, is still charged like every other discount). The shop and the receipt
+// amount ride on the discount object itself, which is saved into the synced
+// `discounts` jsonb — so per-shop usage reporting needs no schema change.
+function resetL1PromoUI() {
+  const fields = document.getElementById('l1-promo-fields');
+  const sel = document.getElementById('l1-promo-shop');
+  const amt = document.getElementById('l1-promo-amount');
+  const err = document.getElementById('l1-promo-error');
+  if (fields) fields.style.display = 'none';
+  if (sel) sel.innerHTML = '<option value="">— Choose shop —</option>'
+    + L1_SHOPS.map(s => `<option value="${escAttr(s)}">${s.replace(/</g, '&lt;')}</option>`).join('');
+  if (amt) amt.value = '';
+  if (err) err.textContent = '';
+}
+
+function toggleL1Promo() {
+  const fields = document.getElementById('l1-promo-fields');
+  if (!fields) return;
+  const open = fields.style.display === 'none' || fields.style.display === '';
+  fields.style.display = open ? 'block' : 'none';
+  if (open) {
+    const sel = document.getElementById('l1-promo-shop');
+    if (sel) sel.focus();
+  }
+}
+
+function applyL1Promo() {
+  const err = document.getElementById('l1-promo-error');
+  const shop = (document.getElementById('l1-promo-shop').value || '').trim();
+  const amount = parseFloat(document.getElementById('l1-promo-amount').value);
+  err.textContent = '';
+  if (!shop) { err.textContent = 'Choose the Level 1 shop on the receipt.'; return; }
+  if (isNaN(amount) || amount <= 0) { err.textContent = 'Enter the amount shown on the receipt.'; return; }
+  if (pendingDiscounts.some(d => d.l1)) {
+    err.textContent = 'A Level 1 validation is already applied — remove it in the discount list first.';
+    return;
+  }
+  pendingDiscounts.push({
+    type: 'percent', amount: 100,
+    reason: '🧾 Level 1 receipt — ' + shop,
+    l1: { shop, receipt: Math.round(amount * 100) / 100 },
+  });
+  document.getElementById('l1-promo-fields').style.display = 'none';
   renderDiscountList();
 }
 
@@ -9424,6 +9483,7 @@ function renderReports() {
   renderSpend(filtered);
   renderComparison();
   renderDiscountSummary(filtered);
+  renderL1PromoSummary(filtered);
   renderPayments(filtered);
   renderStaff(filtered);
   renderStayTiers(filtered);
@@ -10001,6 +10061,83 @@ function renderDiscountSummary(filtered) {
       </div>
     `).join('')}
   `;
+}
+
+// Level 1 promotion report — how many times the receipt promo was used, per
+// shop, with the receipt spend behind it and the parking/valet value comped.
+// Reads the l1 marker saved on the discount object at checkout.
+function renderL1PromoSummary(filtered) {
+  const container = document.getElementById('rep-l1promo');
+  if (!container) return;
+
+  // Every checked-out car in range that used the promo (one l1 discount max).
+  const uses = [];
+  filtered.forEach(e => {
+    if (!e.timeOut || !e.discounts) return;
+    const d = e.discounts.find(x => x && x.l1 && x.l1.shop);
+    if (!d) return;
+    // Value comped = what the promo actually took off this bill.
+    const subtotal = (e.parkingFee || 0) + (e.valetFee || 0);
+    const { breakdown } = calculateDiscountedTotal(subtotal, e.discounts);
+    const line = breakdown.find(x => x && x.l1);
+    uses.push({
+      shop: d.l1.shop,
+      receipt: Number(d.l1.receipt) || 0,
+      comped: line ? line.dollarOff : 0,
+      ticket: e.ticket, name: e.name, timeOut: e.timeOut,
+    });
+  });
+
+  if (uses.length === 0) {
+    container.innerHTML = '<div class="empty">No Level 1 validations in this range</div>';
+    return;
+  }
+
+  // Aggregate per shop.
+  const byShop = {};
+  uses.forEach(u => {
+    const s = (byShop[u.shop] = byShop[u.shop] || { count: 0, receipt: 0, comped: 0 });
+    s.count++; s.receipt += u.receipt; s.comped += u.comped;
+  });
+  const totReceipt = uses.reduce((t, u) => t + u.receipt, 0);
+  const totComped = uses.reduce((t, u) => t + u.comped, 0);
+  const sorted = Object.entries(byShop).sort((a, b) => b[1].count - a[1].count || b[1].receipt - a[1].receipt);
+  const maxCount = Math.max(1, ...sorted.map(([, s]) => s.count));
+
+  const rows = sorted.map(([shop, s]) => `
+    <div class="brand-row">
+      <div class="brand-name" style="font-size:13px;min-width:130px">${shop.replace(/</g, '&lt;')}</div>
+      <div class="brand-bar-wrap">
+        <div class="brand-bar" style="width:${(s.count / maxCount) * 100}%;background:linear-gradient(90deg,var(--bronze),#c9a86a)"></div>
+      </div>
+      <div class="brand-count" style="text-align:right;min-width:210px;white-space:nowrap;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${s.count}x · receipts ${fmtMoney(s.receipt)} · comped ${fmtMoney(s.comped)}</div>
+    </div>`).join('');
+
+  // Individual uses, newest first — the paper trail for the centre.
+  const detail = uses.slice().sort((a, b) => new Date(b.timeOut) - new Date(a.timeOut)).map(u => `
+    <tr>
+      <td style="padding:5px 8px;white-space:nowrap">${fmtDate(new Date(u.timeOut))} ${fmtTime(new Date(u.timeOut))}</td>
+      <td style="padding:5px 8px;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${u.ticket || '—'}</td>
+      <td style="padding:5px 8px">${(u.name || '—').replace(/</g, '&lt;')}</td>
+      <td style="padding:5px 8px">${u.shop.replace(/</g, '&lt;')}</td>
+      <td style="padding:5px 8px;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${fmtMoney(u.receipt)}</td>
+      <td style="padding:5px 8px;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--green)">${fmtMoney(u.comped)}</td>
+    </tr>`).join('');
+
+  container.innerHTML = repCards([
+    ['Promo uses', uses.length, Object.keys(byShop).length + ' shop' + (Object.keys(byShop).length !== 1 ? 's' : ''), 'var(--maroon)'],
+    ['Receipt spend behind them', fmtMoney(totReceipt), 'as shown on receipts', 'var(--bronze)'],
+    ['Valet & parking comped', fmtMoney(totComped), 'value given away', 'var(--green)'],
+  ])
+    + `<div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin-bottom:8px">Uses by shop</div>`
+    + rows
+    + `<div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin:16px 0 8px">Each validation</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="text-align:left;color:var(--text-muted);text-transform:uppercase;font-size:10px;letter-spacing:.5px">
+        <th style="padding:5px 8px">When</th><th style="padding:5px 8px">Ticket</th><th style="padding:5px 8px">Customer</th><th style="padding:5px 8px">Shop</th><th style="padding:5px 8px;text-align:right">Receipt</th><th style="padding:5px 8px;text-align:right">Comped</th>
+      </tr></thead>
+      <tbody>${detail}</tbody>
+    </table></div>`;
 }
 
 // Shared card grid for the report sections below.
@@ -14926,6 +15063,34 @@ document.addEventListener('DOMContentLoaded', () => {
       <div style="display:flex;justify-content:space-between;font-size:16px;color:var(--maroon);padding-top:6px;border-top:1px solid #ebebe9">
         <span id="checkout-total-label"><b>TOTAL DUE:</b></span>
         <strong id="checkout-total" style="font-family:ui-monospace,&#39;Cascadia Code&#39;,&#39;Segoe UI Mono&#39;,Menlo,Consolas,monospace">—</strong>
+      </div>
+    </div>
+
+    <!-- LEVEL 1 RECEIPT PROMO — a receipt from any Level 1 shop = complimentary
+         valet AND parking. Shop + receipt amount are recorded for reporting. -->
+    <div id="l1-promo-box" style="border:1px solid var(--bronze);background:#faf5ea;border-radius:6px;padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600">Level 1 Promotion</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Show a Level 1 shop receipt → valet &amp; parking <b>FREE</b></div>
+        </div>
+        <button type="button" id="l1-promo-toggle-btn" class="btn btn-secondary btn-sm" onclick="toggleL1Promo()" style="border-color:var(--bronze)">🧾 Level 1 Validation</button>
+      </div>
+      <div id="l1-promo-fields" style="display:none;margin-top:12px">
+        <div class="form-grid" style="margin-bottom:10px">
+          <div class="form-field">
+            <label class="form-label">Level 1 shop (on the receipt)</label>
+            <select id="l1-promo-shop" class="form-select">
+              <!-- Populated from L1_SHOPS when the checkout modal opens -->
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Receipt amount ($)</label>
+            <input type="number" id="l1-promo-amount" class="form-input" placeholder="Amount shown on receipt" step="0.01" min="0">
+          </div>
+        </div>
+        <div id="l1-promo-error" style="color:var(--red);font-size:12px;min-height:16px"></div>
+        <button type="button" class="btn btn-primary btn-sm" style="width:100%" onclick="applyL1Promo()">✓ Apply — valet &amp; parking free</button>
       </div>
     </div>
 
