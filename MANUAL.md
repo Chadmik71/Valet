@@ -63,7 +63,8 @@ Go to **New Entry**. Ticket number and time-in fill automatically. Required fiel
 | **Notes** | Damage, special instructions, etc. |
 | **VIP** | Tick to flag a VIP. |
 
-- **Pre-existing damage:** tap the car diagram to mark scratches/dents *before* parking. Shown again at checkout to verify condition — your protection against false claims.
+- **Pre-existing damage:** tap the car diagram to mark scratches/dents *before* parking, and pick what each numbered mark is (Scratched / Dented / Marked / Other). Shown again at checkout to verify condition — your protection against false claims.
+- **Returning car? Old marks load automatically:** when you type or scan a plate the app has seen before, the damage marks from that car's *last visit* pre-load onto the diagram with a gold notice (how many, from when). Walk around the car — remove marks that no longer apply, add anything new, or tap **✕ Don't carry over**. Whatever is on the diagram when you save is this visit's record.
 - **Photo & location:** optionally attach a car photo and capture GPS at drop-off.
 
 **Save** triggers automatically: key tag prints (if a printer is set up), the customer is texted their QR ticket (if a mobile was entered), and the car appears on Active Cars and the Dashboard on every device.
@@ -100,6 +101,7 @@ The working list of every car on site: ticket, customer, plate, brand, bay, time
 | Edit | Fix bay, time in or customer details. |
 | Bag | Log a hands-free shopping bag pickup (section 9). |
 | Droplet | Add or manage a car wash (section 10). |
+| 📍 Marks & Notes | View/edit the car's damage marks and note while on site. **Turns solid red when the car already has marks or a note** — check them before handover. |
 | **Request** | Put the car in the pickup queue with an ETA. |
 | **✓ Mark Out** | Check the car out and take payment. |
 
@@ -110,6 +112,7 @@ Below the list is a **Checked Out Today** section.
 ## 8. Checking a car OUT & payment
 Tap **✓ Mark Out**. The window shows duration and the fee (parking + the $20 valet fee). Before confirming:
 
+- **Level 1 promotion — free valet & parking with a receipt:** a customer showing a **receipt from any Level 1 shop** parks free. In the gold **Level 1 Promotion** box: tap **🧾 Level 1 Validation**, pick the **shop**, enter the **amount on the receipt**, tap **Apply**. Total drops to $0 (a car wash is still charged). One per car; remove it in the discount list if applied by mistake. Every use is tracked per shop in *Reports → Payments → Level 1 Promotion*.
 - **Discounts & validations** — add a store validation or a %/$ discount; each is recorded for the manager (Reports → Payments → Discounts).
 - **Payment status:** **Paid** (choose method — Card is the norm here, Cash, EFTPOS or Other), **Unpaid** (shows as outstanding), **Complimentary** (free parking; a car wash is still charged), **Charged to account/shop** (settle later).
 - Optionally add a **tip** or override the fee. The **Attendant (returning car)** field credits who fetched it.
@@ -151,9 +154,12 @@ Prices are in the [pricing reference](#16-pricing-reference). Tap the chip or dr
 - **Stat tiles:** Cars In, Cars Out, Currently On Site, Pickups Pending, Today's Revenue, Average Stay. Tap **Today's Revenue** to see who paid how much.
 - **Today's Notes / Handover:** a shared team notepad; auto-saves and clears the next morning.
 - **Top Brands** and **Recent Activity** for the day.
+- **New customer feedback alert:** when a customer leaves a star rating from their ticket page, a toast pops up immediately on every open device (red **"LOW RATING — NEEDS ATTENTION"** for 3★ or under) and a banner pins to the top of the Dashboard until someone opens *Reports → Customer Feedback* (or dismisses it) on that device. **A red banner means an unhappy customer — read the comment and tell the manager; don't just dismiss it.**
 
 ## 12. Customers
 Every car builds a database keyed by plate. Search by name, plate or phone for a customer's full visit history and total spend. Returning customers and VIPs stand out. Editing a customer updates all their past visits.
+
+In a customer's detail popup, the **Recent Visits** table has a **📍 column** — tap it to open that visit's **damage record**: intake marks, note, and how the car was returned (clean, or the logged incident with acknowledgement). Use this when a customer rings about damage from a past visit.
 
 ## 13. Reports
 Pick a date range at the top; every panel updates. Menu groups related panels:
@@ -166,13 +172,14 @@ Pick a date range at the top; every panel updates. Menu groups related panels:
 |---|---|
 | **Management Summary** | Centre-facing roll-up (cars, revenue, tips, car wash, validation value, avg pickup wait, peak occupancy, incidents) + **Pickup Wait Times** (request→handover SLA) + **Tenant Validations** (by retailer). Has a **Print / PDF** one-pager. |
 | **Daily Volume** | Cars per day (with revenue), busiest/slowest day + trend, average by weekday, peak times by hour, peak cars on site, customer spend, brand breakdown. |
-| **Payments** | Cash-up (Card/EFTPOS vs cash, tips, outstanding, non-card flagged) plus **Shop Accounts**, **Car Wash** and **Discounts** panels. |
+| **Payments** | Cash-up (Card/EFTPOS vs cash, tips, outstanding, non-card flagged) plus **Shop Accounts**, **Car Wash**, **🧾 Level 1 Promotion** (uses per shop, receipt totals, value comped, line-by-line log) and **Discounts** panels. |
 | **Staff Performance** | Cars parked per attendant; checkouts + revenue + tips per attendant. |
-| **Customers** | Stay-length tiers (free <2h vs paid) and repeat customers. |
+| **Customers** | Stay-length tiers (free <2h vs paid) and repeat customers — **returning** means they've *ever* visited before (even outside the selected range), shown with all-time visits and spend. |
+| **Customer Feedback** | Star ratings customers leave from their ticket page — average, distribution, recent comments. Opening it clears the "new feedback" banner on this device. |
 | **Bag Jobs by Staff** | Hands-free shopping jobs per staff member, split into **Collected** (picked the bags up at the shop) and **Delivered** (put them in the car), plus **Avg time** per job per person. A breakdown at the top shows the average **Wait to claim** (requested → claimed), **To shop** (claimed → bags photographed at the shop), **Shop → car** (shop → loaded in car) and **Total per job**, over the selected range. |
 | **Period Comparison** | This week/month/year vs the last. |
 | **Incidents** | Cars where new damage was logged at handover, with notes and acknowledgement. |
-| **Full Log** | Every entry, searchable. |
+| **Full Log** | Every entry, searchable. Rows with marks/notes/incidents show a **📍 Marks** button (red outline when damage is on record) opening that visit's damage record. |
 
 Export any report to **CSV** or a print-ready **PDF**.
 
@@ -248,6 +255,8 @@ Paint correction, paint protection and other specialty services are quote-only.
 | Comp | Complimentary — parking given free. |
 | ETA | Minutes until a customer wants their car (queue). |
 | Key tag | Printed ticket on the keys, carrying the QR code. |
+| Level 1 validation | Centre promotion — a Level 1 shop receipt makes valet & parking free; recorded with shop + receipt amount. |
+| Marks & Notes (📍) | A car's damage diagram and note — editable on site, viewable for any past visit. |
 | Validation | A store-sponsored discount on the parking fee. |
 | VIP | A flagged customer who gets a star and priority handling. |
 
