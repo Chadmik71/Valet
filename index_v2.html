@@ -9003,6 +9003,16 @@ function localDateStr(dt) {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
+// CALENDAR days between a past timestamp and now, in local (Sydney) time.
+// Not 24-hour blocks: a visit yesterday afternoon is 1 day ago even if less
+// than 24 hours have passed — so "Today"/"Yesterday" labels match the date.
+function daysAgoLocal(dt) {
+  const d = new Date(dt), now = new Date();
+  const a = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((b - a) / 86400000);
+}
+
 // Shared Full-Log filter (date range + search) so the table and the CSV export
 // always reflect the same set.
 function getLogFiltered() {
@@ -12255,7 +12265,7 @@ function lookupCustomerByRego(rego) {
   const last = matches[0];
   const visitCount = matches.length;
   const lastDate = new Date(last.timeIn);
-  const daysSince = Math.floor((new Date() - lastDate) / 86400000);
+  const daysSince = daysAgoLocal(lastDate);
   const daysSinceText = daysSince === 0 ? 'today' : daysSince === 1 ? 'yesterday' : daysSince + ' days ago';
 
   // Total lifetime value
@@ -13446,7 +13456,7 @@ function renderCustomers() {
       lastText = '<span style="color:var(--text-muted);font-style:italic">Added manually</span>';
     } else {
       const last = new Date(c.lastVisit);
-      const daysSince = Math.floor((new Date() - last) / 86400000);
+      const daysSince = daysAgoLocal(last);
       lastText = daysSince === 0 ? 'Today' : daysSince === 1 ? 'Yesterday' : fmtDate(last);
     }
     const vehicle = (c.brand + (c.model ? ' ' + c.model : '')).trim() || '—';
