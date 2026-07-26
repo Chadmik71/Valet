@@ -1682,6 +1682,8 @@ body.dark-mode .scan-banner {
     <div style="padding:12px;background:var(--sandstone);border-radius:6px;margin-top:14px">
       <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin-bottom:4px">Pre-existing damage</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Tap the car to mark existing scratches/dents before parking. Tap a mark to remove it. Describe each in Notes above for the record.</div>
+      <!-- Carry-over notice: returning car's marks from its last visit were pre-loaded -->
+      <div id="damage-carry-note" style="display:none"></div>
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
         <div id="damage-pad" class="damage-pad" onclick="addDamageMarker(event)">
           <div id="damage-markers" class="damage-markers"></div>
@@ -12065,6 +12067,9 @@ function lookupCustomerByRego(rego) {
   const matches = findCustomerByRego(rego);
   const banner = document.getElementById('customer-banner');
 
+  // Plate changed away from a carried-over car? Drop its marks (if untouched).
+  dropCarriedDamage(rego);
+
   if (!matches || matches.length === 0) {
     banner.style.display = 'none';
     // Pre-registered (manually-added) customer? Fill the blank fields — but no
@@ -12107,6 +12112,19 @@ function lookupCustomerByRego(rego) {
   const isVip = matches.some(m => m.vip);
   const vipBox = document.getElementById('f-vip');
   if (vipBox && isVip) vipBox.checked = true;
+
+  // Carry over damage marks from this car's most recent visit that had any,
+  // so old damage is on record before the car is even parked. Only when the
+  // pad is empty — never overwrite marks staff already made for this intake.
+  if (damageMarkers.length === 0) {
+    const lastDamaged = matches.find(m => m.damage && m.damage.length);
+    if (lastDamaged) {
+      damageMarkers = lastDamaged.damage.map(m => ({ ...m }));
+      damageCarry = { rego: normaliseRego(rego), sig: JSON.stringify(damageMarkers), from: lastDamaged.timeIn };
+      renderDamageMarkers();
+      updateDamageCarryNote();
+    }
+  }
 
   // Update banner (subtle persistent reminder at top of form)
   let badge = visitCount === 1 ? 'Returning customer · 2nd visit' :
@@ -12467,6 +12485,13 @@ function clearPendingExtras() {
 // ═══════════════════════════════════════════════════
 let damageMarkers = []; // [{x, y, type}] in 0–100 % of the diagram
 
+// Carry-over state: when a returning plate is typed at check-in, the marks
+// from that car's most recent visit are pre-loaded onto the intake pad so
+// old damage is on record from the moment the car arrives. {rego: normalised
+// plate, sig: JSON of the carried marks (to tell "untouched" from "edited"),
+// from: that visit's timeIn}.
+let damageCarry = null;
+
 // Damage types staff pick per mark. First entry is the default for a new mark.
 // "Other" reveals a free-text box so staff can describe anything not listed.
 const DAMAGE_TYPES = ['Scratched', 'Dented', 'Marked', 'Other'];
@@ -12541,7 +12566,50 @@ function removeDamageMarker(i, event) {
 }
 function clearDamageMarkers() {
   damageMarkers = [];
+  damageCarry = null;
+  updateDamageCarryNote();
   renderDamageMarkers();
+}
+
+// Show/hide the "marks carried over from last visit" notice on the intake pad.
+function updateDamageCarryNote() {
+  const el = document.getElementById('damage-carry-note');
+  if (!el) return;
+  if (!damageCarry) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const n = JSON.parse(damageCarry.sig).length;
+  const when = fmtDate(new Date(damageCarry.from));
+  el.style.display = '';
+  el.innerHTML = `<div style="display:flex;align-items:flex-start;gap:8px;background:#fff3d4;border:1px solid #e0a640;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#7a5a00;line-height:1.45">
+    <span style="font-size:15px;line-height:1">↩</span>
+    <span style="flex:1"><b>${n} mark${n !== 1 ? 's' : ''} carried over</b> from this car's last visit (${when}) — walk around the car and remove any that no longer apply (e.g. repaired since).</span>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="removeCarriedDamage()" style="flex:none">✕ Don't carry over</button>
+  </div>`;
+}
+
+// Staff said the old marks don't apply — remove them (only if they haven't
+// been edited since carry-over; edited marks are theirs now, so keep those).
+function removeCarriedDamage() {
+  if (!damageCarry) return;
+  if (JSON.stringify(damageMarkers) === damageCarry.sig) {
+    damageMarkers = [];
+    renderDamageMarkers();
+  }
+  damageCarry = null;
+  updateDamageCarryNote();
+}
+
+// The plate was changed to a different car: carried marks from the previous
+// plate no longer belong on this intake. Auto-remove them only when they're
+// exactly as carried — if staff added/edited marks, those are deliberate.
+function dropCarriedDamage(newRego) {
+  if (!damageCarry) return;
+  if (normaliseRego(newRego) === damageCarry.rego) return;
+  if (JSON.stringify(damageMarkers) === damageCarry.sig) {
+    damageMarkers = [];
+    renderDamageMarkers();
+  }
+  damageCarry = null;
+  updateDamageCarryNote();
 }
 
 // ─── Marks & Notes on a parked car (Cars On Site → 📍 button) ───
