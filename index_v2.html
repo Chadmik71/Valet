@@ -5026,10 +5026,13 @@ function toggleL1Promo() {
 function applyL1Promo() {
   const err = document.getElementById('l1-promo-error');
   const shop = (document.getElementById('l1-promo-shop').value || '').trim();
-  const amount = parseFloat(document.getElementById('l1-promo-amount').value);
+  const amtRaw = (document.getElementById('l1-promo-amount').value || '').trim();
   err.textContent = '';
   if (!shop) { err.textContent = 'Choose the Level 1 shop on the receipt.'; return; }
-  if (isNaN(amount) || amount <= 0) { err.textContent = 'Enter the amount shown on the receipt.'; return; }
+  // Amount is optional — staff sometimes can't read the total on the receipt.
+  // Blank (or 0) still validates the promo; it's recorded as "no amount".
+  const amount = amtRaw === '' ? 0 : parseFloat(amtRaw);
+  if (isNaN(amount) || amount < 0) { err.textContent = 'Receipt amount must be a number (or leave it blank).'; return; }
   if (pendingDiscounts.some(d => d.l1)) {
     err.textContent = 'A Level 1 validation is already applied — remove it in the discount list first.';
     return;
@@ -5037,7 +5040,7 @@ function applyL1Promo() {
   pendingDiscounts.push({
     type: 'percent', amount: 100,
     reason: '🧾 Level 1 receipt — ' + shop,
-    l1: { shop, receipt: Math.round(amount * 100) / 100 },
+    l1: { shop, receipt: amount > 0 ? Math.round(amount * 100) / 100 : null },
   });
   document.getElementById('l1-promo-fields').style.display = 'none';
   renderDiscountList();
@@ -10251,13 +10254,14 @@ function renderL1PromoSummary(filtered) {
       <td style="padding:5px 8px;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${u.ticket || '—'}</td>
       <td style="padding:5px 8px">${(u.name || '—').replace(/</g, '&lt;')}</td>
       <td style="padding:5px 8px">${u.shop.replace(/</g, '&lt;')}</td>
-      <td style="padding:5px 8px;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${fmtMoney(u.receipt)}</td>
+      <td style="padding:5px 8px;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace" title="${u.receipt > 0 ? '' : 'Receipt shown but the amount was not readable/recorded'}">${u.receipt > 0 ? fmtMoney(u.receipt) : '—'}</td>
       <td style="padding:5px 8px;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--green)">${fmtMoney(u.comped)}</td>
     </tr>`).join('');
 
+  const noAmt = uses.filter(u => !(u.receipt > 0)).length;
   container.innerHTML = repCards([
     ['Promo uses', uses.length, Object.keys(byShop).length + ' shop' + (Object.keys(byShop).length !== 1 ? 's' : ''), 'var(--maroon)'],
-    ['Receipt spend behind them', fmtMoney(totReceipt), 'as shown on receipts', 'var(--bronze)'],
+    ['Receipt spend behind them', fmtMoney(totReceipt), noAmt ? noAmt + ' use' + (noAmt !== 1 ? 's' : '') + ' recorded without an amount' : 'as shown on receipts', 'var(--bronze)'],
     ['Valet & parking comped', fmtMoney(totComped), 'value given away', 'var(--green)'],
   ])
     + `<div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin-bottom:8px">Uses by shop</div>`
@@ -15477,8 +15481,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </select>
           </div>
           <div class="form-field">
-            <label class="form-label">Receipt amount ($)</label>
-            <input type="number" id="l1-promo-amount" class="form-input" placeholder="Amount shown on receipt" step="0.01" min="0">
+            <label class="form-label">Receipt amount ($) — optional</label>
+            <input type="number" id="l1-promo-amount" class="form-input" placeholder="Blank if you can't see it" step="0.01" min="0">
           </div>
         </div>
         <div id="l1-promo-error" style="color:var(--red);font-size:12px;min-height:16px"></div>

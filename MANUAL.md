@@ -112,7 +112,7 @@ Below the list is a **Checked Out Today** section.
 ## 8. Checking a car OUT & payment
 Tap **✓ Mark Out**. The window shows duration and the fee (parking + the $20 valet fee). Before confirming:
 
-- **Level 1 promotion — free valet & parking with a receipt:** a customer showing a **receipt from any Level 1 shop** parks free. In the gold **Level 1 Promotion** box: tap **🧾 Level 1 Validation**, pick the **shop**, enter the **amount on the receipt**, tap **Apply**. Total drops to $0 (a car wash is still charged). One per car; remove it in the discount list if applied by mistake. Every use is tracked per shop in *Reports → Payments → Level 1 Promotion*.
+- **Level 1 promotion — free valet & parking with a receipt:** a customer showing a **receipt from any Level 1 shop** parks free. In the gold **Level 1 Promotion** box: tap **🧾 Level 1 Validation**, pick the **shop**, enter the **amount on the receipt** (leave blank if you can't read it), tap **Apply**. Total drops to $0 (a car wash is still charged). One per car; remove it in the discount list if applied by mistake. Every use is tracked per shop in *Reports → Payments → Level 1 Promotion*.
 - **Discounts & validations** — add a store validation or a %/$ discount; each is recorded for the manager (Reports → Payments → Discounts).
 - **Payment status:** **Paid** (choose method — Card is the norm here, Cash, EFTPOS or Other), **Unpaid** (shows as outstanding), **Complimentary** (free parking; a car wash is still charged), **Charged to account/shop** (settle later).
 - Optionally add a **tip** or override the fee. The **Attendant (returning car)** field credits who fetched it.
