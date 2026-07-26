@@ -8946,6 +8946,8 @@ function renderLog() {
         ? '<span class="status-pill status-completed">Completed</span>'
         : '<span class="status-pill status-active">On Site</span>'}</td>
       <td>
+        ${((e.damage && e.damage.length) || (e.notes || '').trim() || (e.incident && e.incident.condition === 'damage'))
+          ? `<button class="btn btn-secondary btn-sm" onclick="viewMarksNotes('${e.id}')" title="View this visit's damage marks / note / handover condition" style="${(e.damage && e.damage.length) || (e.incident && e.incident.condition === 'damage') ? 'border-color:#a83838;color:#a83838' : ''}">📍 Marks</button>` : ''}
         ${e.photo ? `<button class="btn btn-secondary btn-sm" onclick="viewPhoto('${e.id}')" title="View photo">Photo</button>` : ''}
         ${e.gps ? `<button class="btn btn-secondary btn-sm" onclick="viewBayLocation(${e.gps.lat},${e.gps.lng})" title="Show on map">Find Bay</button>` : ''}
         <button class="btn btn-secondary btn-sm" onclick="openEditCar('${e.id}')" style="margin-right:4px" title="Edit bay, time in/out & customer details">Edit</button>
@@ -12707,6 +12709,59 @@ function saveMarkNote() {
   renderLog();
 }
 
+// ─── Read-only damage record viewer (Full Log + customer history) ───
+// Shows a visit's intake marks, note, and the handover condition — the
+// evidence trail when a customer queries damage after the fact.
+function viewMarksNotes(id) {
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+  const tIn = new Date(e.timeIn);
+  const visitLine = `<b>${canonicalBrand(e.brand)}</b> ${arvEsc(e.model || '')} · <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(e.rego)}</span> · ${fmtDate(tIn)} ${fmtTime(tIn)}${e.timeOut ? ' → ' + fmtTime(new Date(e.timeOut)) : ' · still on site'}`;
+
+  let html = `<div style="color:var(--text-muted);margin-bottom:14px">${visitLine}</div>`;
+
+  // Intake marks
+  html += `<div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin-bottom:6px">Pre-existing damage — marked at intake${e.damage && e.damage.length ? ' (' + e.damage.length + ')' : ''}</div>`;
+  html += (e.damage && e.damage.length)
+    ? damageDiagramHTML(e.damage)
+    : '<div style="color:var(--text-muted);font-style:italic;margin-bottom:4px">No damage marks were recorded at intake.</div>';
+
+  // Note
+  if ((e.notes || '').trim()) {
+    html += `<div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin:14px 0 6px">Note</div>
+      <div style="background:var(--sandstone);border-radius:6px;padding:8px 10px">${arvEsc(e.notes)}</div>`;
+  }
+
+  // Handover condition (only meaningful once checked out)
+  if (e.timeOut) {
+    if (e.incident && e.incident.condition === 'damage') {
+      html += `<div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#a83838;font-weight:600;margin:14px 0 6px">⚠ New damage logged at handover</div>
+        <div style="background:#fdf1f2;border:1px solid #a83838;border-radius:6px;padding:8px 10px">
+          ${arvEsc(e.incident.notes || '')}
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">${e.incident.ack ? '✓ Customer was shown and acknowledged the damage' : '✗ Customer acknowledgement NOT recorded'}${e.incident.by ? ' · logged by ' + arvEsc(e.incident.by) : ''}</div>
+        </div>`;
+    } else {
+      html += `<div style="margin-top:14px;color:var(--green);font-size:12px">✓ Returned with no new damage logged at handover.</div>`;
+    }
+  }
+
+  document.getElementById('mv-ticket').textContent = e.ticket;
+  document.getElementById('mv-body').innerHTML = html;
+  // Still on site → allow jumping straight into the editable Marks & Notes modal.
+  const editBtn = document.getElementById('mv-edit-btn');
+  editBtn.style.display = e.timeOut ? 'none' : '';
+  document.getElementById('marks-view-modal').dataset.entryId = id;
+  document.getElementById('marks-view-modal').classList.add('show');
+}
+function closeMarksView() {
+  document.getElementById('marks-view-modal').classList.remove('show');
+}
+function mvEdit() {
+  const id = document.getElementById('marks-view-modal').dataset.entryId;
+  closeMarksView();
+  if (id) openMarkNote(id);
+}
+
 // Read-only diagram for display elsewhere (checkout, log). Returns HTML:
 // the marked-up car plus a numbered legend listing each mark's type.
 function damageDiagramHTML(markers) {
@@ -12839,17 +12894,21 @@ function showCustomerDetail(regoArg) {
           <th style="text-align:left;padding:6px">Stay</th>
           <th style="text-align:right;padding:6px">Fee</th>
           <th style="text-align:right;padding:6px">Tip</th>
+          <th style="text-align:center;padding:6px" title="Damage marks / note / incident on that visit">📍</th>
         </tr>
         ${matches.slice(0, 10).map(e => {
           const tIn = new Date(e.timeIn);
           const tOut = e.timeOut ? new Date(e.timeOut) : null;
           const dur = tOut ? fmtDuration(tOut - tIn) : 'On site';
+          const hasRecord = (e.damage && e.damage.length) || (e.notes || '').trim() || (e.incident && e.incident.condition === 'damage');
+          const isDmg = (e.damage && e.damage.length) || (e.incident && e.incident.condition === 'damage');
           return `<tr>
             <td style="padding:5px;border-bottom:1px solid #ebebe9">${fmtDate(tIn)}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(e.ticket)}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9">${dur}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${e.totalFee ? fmtMoney(e.totalFee) : '—'}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${e.tip ? fmtMoney(e.tip) : '—'}</td>
+            <td style="padding:5px;border-bottom:1px solid #ebebe9;text-align:center">${hasRecord ? `<button class="btn btn-secondary btn-sm" onclick="viewMarksNotes('${e.id}')" title="View this visit's damage record" style="${isDmg ? 'border-color:#a83838;color:#a83838' : ''}">📍</button>` : '<span style="color:var(--text-muted)">—</span>'}</td>
           </tr>`;
         }).join('')}
       </table>
@@ -15490,6 +15549,19 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="btn-row" style="justify-content:flex-end;margin-top:16px">
       <button class="btn btn-secondary" onclick="closeMarkNote()">Cancel</button>
       <button class="btn btn-primary" onclick="saveMarkNote()">✓ Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- MARKS & NOTES VIEWER — read-only record of a past (or current) visit's
+     intake damage marks, note, and any new-damage incident at handover -->
+<div class="modal" id="marks-view-modal">
+  <div class="modal-box" style="max-width:560px;max-height:88vh;overflow-y:auto">
+    <div class="modal-title">Damage record — <span id="mv-ticket" style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace"></span></div>
+    <div id="mv-body" style="font-size:13px"></div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-secondary" id="mv-edit-btn" style="display:none" onclick="mvEdit()">✎ Edit marks / note</button>
+      <button class="btn btn-primary" onclick="closeMarksView()">Close</button>
     </div>
   </div>
 </div>
