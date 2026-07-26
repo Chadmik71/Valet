@@ -560,6 +560,9 @@ body.ff-arrivals-off .ff-arrivals{display:none !important}
 .ico-btn:hover{background:var(--sandstone)}
 .ico-btn svg{width:15px;height:15px;display:block}
 .ico-btn.on{background:var(--maroon);color:#fff}
+/* Marks & Notes button turns red when the car already has damage marks or a
+   note, so staff can't miss it at handover. */
+.ico-btn.mn-on{background:#a83838;color:#fff}
 .ico-btn.ico-danger{color:#a83838}
 .ico-btn.ico-danger:hover{background:#a83838;color:#fff}
 body.dark-mode .ico-group{background:transparent}
@@ -6813,6 +6816,7 @@ const ACT_ICONS = {
   bag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
   wash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+  mark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
 };
 
 // Coloured status chip for a car with a wash booked (bronze→maroon→green as it
@@ -7170,6 +7174,7 @@ function renderActiveList() {
     // Request (pickup) and Mark Out stay as prominent labelled buttons.
     const bagOn = ensureBagJobs(e).some(j => j.status && j.status !== 'done');
     const washOn = e.carWash && e.carWash.status && e.carWash.status !== 'ready';
+    const mnOn = !!((e.damage && e.damage.length) || (e.notes || '').trim());
     const actions = `<div class="car-actions">`
       + washChip(e.carWash, e.id)
       + `<span class="ico-group">`
@@ -7179,6 +7184,7 @@ function renderActiveList() {
       + `<button class="ico-btn" onclick="openEditCar('${e.id}')" title="Edit bay, time in or customer details">${ACT_ICONS.edit}</button>`
       + `<button class="ico-btn ff-bags${bagOn ? ' on' : ''}" onclick="logBagRequest('${e.id}')" title="${bagOn ? 'Add another hands-free shopping pickup (new shop)' : 'Log a hands-free shopping bag pickup'}">${ACT_ICONS.bag}</button>`
       + `<button class="ico-btn${washOn ? ' on' : ''}" onclick="openWashDialog('${e.id}')" title="${e.carWash ? 'Manage car wash' : 'Add a car wash'}">${ACT_ICONS.wash}</button>`
+      + `<button class="ico-btn${mnOn ? ' mn-on' : ''}" onclick="openMarkNote('${e.id}')" title="${mnOn ? 'This car has ' + ((e.damage && e.damage.length) ? e.damage.length + ' damage mark' + (e.damage.length !== 1 ? 's' : '') : '') + ((e.damage && e.damage.length) && (e.notes || '').trim() ? ' + ' : '') + ((e.notes || '').trim() ? 'a note' : '') + ' — view or edit' : 'Mark damage on the car diagram or add a note'}">${ACT_ICONS.mark}</button>`
       + `<button class="ico-btn ico-danger" onclick="deleteEntry('${e.id}')" title="Delete this entry (mistaken/duplicate)">${ACT_ICONS.trash}</button>`
       + `</span>`
       + pickupBtn
@@ -12538,6 +12544,101 @@ function clearDamageMarkers() {
   renderDamageMarkers();
 }
 
+// ─── Marks & Notes on a parked car (Cars On Site → 📍 button) ───
+// Same pad as intake, but editable any time while the car is on site — for
+// damage spotted after check-in (or missed at intake) and general notes.
+// Saves straight onto the entry (damage + notes both sync to the cloud).
+let mnEntryId = null;
+let mnMarkers = [];
+
+function openMarkNote(id) {
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+  mnEntryId = id;
+  mnMarkers = (e.damage || []).map(m => ({ ...m }));   // edit a copy; entry mutates only on Save
+  document.getElementById('mn-ticket').textContent = e.ticket;
+  document.getElementById('mn-info').innerHTML = `<b>${canonicalBrand(e.brand)}</b> ${e.model || ''} · ${e.rego} · Bay ${e.bay || '—'}`;
+  document.getElementById('mn-notes').value = e.notes || '';
+  renderMnMarkers();
+  document.getElementById('marknote-modal').classList.add('show');
+}
+
+function renderMnMarkers() {
+  const pad = document.getElementById('mn-pad');
+  const layer = document.getElementById('mn-markers');
+  const count = document.getElementById('mn-count');
+  const list = document.getElementById('mn-list');
+  if (!pad || !layer) return;
+  if (!pad.querySelector('.damage-car')) pad.insertAdjacentHTML('afterbegin', DAMAGE_CAR_SVG);
+  layer.innerHTML = mnMarkers.map((m, i) =>
+    `<div class="damage-dot" style="left:${m.x}%;top:${m.y}%" onclick="mnRemoveMarker(${i},event)" title="${escAttr(damageLabel(m))} — tap to remove">${i + 1}</div>`
+  ).join('');
+  if (count) count.textContent = mnMarkers.length
+    ? `${mnMarkers.length} mark${mnMarkers.length !== 1 ? 's' : ''}`
+    : 'No marks added';
+  if (list) list.innerHTML = mnMarkers.map((m, i) => {
+    const type = m.type || DAMAGE_TYPES[0];
+    const detailBox = type === 'Other'
+      ? `<input type="text" id="mn-detail-${i}" class="form-input" style="margin-left:30px" placeholder="Describe the damage…" value="${escAttr(m.detail || '')}" oninput="mnSetDetail(${i},this.value)">`
+      : '';
+    return `<div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="flex:none;width:22px;height:22px;border-radius:50%;background:#a83838;color:#fff;font-size:11px;font-weight:bold;display:flex;align-items:center;justify-content:center">${i + 1}</span>
+        <select class="form-select" style="flex:1;min-width:0" onchange="mnSetType(${i},this.value)">
+          ${DAMAGE_TYPES.map(t => `<option value="${t}"${type === t ? ' selected' : ''}>${t}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="mnRemoveMarker(${i})" title="Remove this mark">✕</button>
+      </div>
+      ${detailBox}
+    </div>`;
+  }).join('');
+}
+
+function mnAddMarker(event) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * 100;
+  const y = ((event.clientY - rect.top) / rect.height) * 100;
+  if (x < 0 || x > 100 || y < 0 || y > 100) return;
+  mnMarkers.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, type: DAMAGE_TYPES[0] });
+  renderMnMarkers();
+  if (typeof hapticFeedback === 'function') hapticFeedback('light');
+}
+function mnRemoveMarker(i, event) {
+  if (event) event.stopPropagation();
+  mnMarkers.splice(i, 1);
+  renderMnMarkers();
+}
+function mnSetType(i, val) {
+  if (!mnMarkers[i]) return;
+  mnMarkers[i].type = val;
+  if (val !== 'Other') delete mnMarkers[i].detail;
+  renderMnMarkers();
+  if (val === 'Other') { const inp = document.getElementById('mn-detail-' + i); if (inp) inp.focus(); }
+}
+function mnSetDetail(i, val) {
+  if (mnMarkers[i]) mnMarkers[i].detail = val;
+}
+function mnClearMarkers() {
+  mnMarkers = [];
+  renderMnMarkers();
+}
+function closeMarkNote() {
+  document.getElementById('marknote-modal').classList.remove('show');
+  mnEntryId = null;
+}
+function saveMarkNote() {
+  const e = entries.find(x => x.id === mnEntryId);
+  if (!e) { closeMarkNote(); return; }
+  e.damage = mnMarkers.slice();
+  e.notes = document.getElementById('mn-notes').value.trim();
+  saveData(e.id, { immediate: true });
+  cloudAudit('mark_note', 'entry', e.id, { ticket: e.ticket, marks: e.damage.length, hasNote: !!e.notes });
+  closeMarkNote();
+  hapticFeedback('success');
+  renderActive();
+  renderLog();
+}
+
 // Read-only diagram for display elsewhere (checkout, log). Returns HTML:
 // the marked-up car plus a numbered legend listing each mark's type.
 function damageDiagramHTML(markers) {
@@ -13298,6 +13399,7 @@ function jsToDb(e) {
     shop_settled_at: e.shopSettledAt, shop_settled_by: e.shopSettledBy,
     car_wash: e.carWash || null,
     incident: e.incident || null,
+    damage: (e.damage && e.damage.length) ? e.damage : null,
     vip: e.vip ? true : null,
     square_payment: e.squarePayment || null,
     updated_by: currentUser?.username,
@@ -13330,6 +13432,7 @@ function dbToJs(d) {
     shopSettledAt: d.shop_settled_at, shopSettledBy: d.shop_settled_by,
     carWash: d.car_wash || null,
     incident: d.incident || null,
+    damage: d.damage || [],
     vip: !!d.vip,
     squarePayment: d.square_payment,
     updatedAt: d.updated_at || null,   // server last-modified stamp for conflict/stale-echo checks
@@ -15292,6 +15395,33 @@ document.addEventListener('DOMContentLoaded', () => {
     <div id="lt-results"></div>
     <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
       <button class="btn btn-secondary btn-sm" onclick="closeLostTicket()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- MARKS & NOTES MODAL — view/edit a parked car's damage marks and note -->
+<div class="modal" id="marknote-modal">
+  <div class="modal-box" style="max-width:560px;max-height:88vh;overflow-y:auto">
+    <div class="modal-title">Marks &amp; Notes — <span id="mn-ticket" style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace"></span></div>
+    <div id="mn-info" style="font-size:13px;color:var(--text-muted);margin-bottom:14px">—</div>
+
+    <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin-bottom:4px">Damage marks</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Tap the diagram where the damage is · tap a numbered dot to remove it</div>
+    <div id="mn-pad" class="damage-pad" onclick="mnAddMarker(event)">
+      <div id="mn-markers" class="damage-markers"></div>
+    </div>
+    <div id="mn-count" style="font-size:12px;color:var(--text-muted);margin-bottom:8px">No marks added</div>
+    <div id="mn-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="mnClearMarkers()">↺ Clear marks</button>
+
+    <div class="form-field" style="margin:14px 0 0">
+      <label class="form-label">Note on this car</label>
+      <textarea id="mn-notes" class="form-input" rows="2" placeholder="e.g. damage observations, special instructions, keys in console…" style="width:100%;resize:vertical"></textarea>
+    </div>
+
+    <div class="btn-row" style="justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-secondary" onclick="closeMarkNote()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMarkNote()">✓ Save</button>
     </div>
   </div>
 </div>
