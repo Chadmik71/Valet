@@ -9012,6 +9012,10 @@ function daysAgoLocal(dt) {
   const b = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((b - a) / 86400000);
 }
+function relDayLabel(dt) {
+  const n = daysAgoLocal(dt);
+  return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
+}
 
 // Shared Full-Log filter (date range + search) so the table and the CSV export
 // always reflect the same set.
@@ -12969,6 +12973,12 @@ function showCustomerDetail(regoArg) {
 
   const last = matches[0];
   const first = matches[matches.length - 1];
+  // "Last visit" means the last COMPLETED visit — if the car is on site right
+  // now, that current visit is shown on its own line, not as the last visit
+  // (otherwise a car parked today reads as "last visit: today", which looks
+  // wrong when staff are thinking of the previous trip).
+  const curVisit = matches.find(m => !m.timeOut) || null;
+  const lastDone = matches.find(m => m.timeOut) || null;
   const totalSpent = matches.reduce((s, e) => s + (e.totalFee || 0), 0);
   const totalTip = matches.reduce((s, e) => s + (e.tip || 0), 0);
   const avgStay = matches.filter(e => e.timeOut).reduce((s, e, _, arr) => {
@@ -13050,8 +13060,9 @@ function showCustomerDetail(regoArg) {
         ${last.phone ? '<strong>Phone:</strong> ' + arvEsc(last.phone) + '<br>' : ''}
         <strong>Vehicle:</strong> ${arvEsc(last.brand)} ${arvEsc(last.model || '')} ${last.colour ? '· ' + arvEsc(last.colour) : ''}<br>
         <strong>Plate:</strong> <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(last.rego)}</span><br>
+        ${curVisit ? '<strong>On site now:</strong> checked in ' + fmtTime(new Date(curVisit.timeIn)) + ' ' + relDayLabel(curVisit.timeIn) + (curVisit.bay ? ' · Bay ' + arvEsc(curVisit.bay) : '') + '<br>' : ''}
         <strong>First visit:</strong> ${fmtDate(new Date(first.timeIn))}<br>
-        <strong>Last visit:</strong> ${fmtDate(new Date(last.timeIn))}<br>
+        <strong>Last ${curVisit ? 'completed ' : ''}visit:</strong> ${lastDone ? fmtDate(new Date(lastDone.timeIn)) + ' <span style="color:var(--text-muted)">(' + relDayLabel(lastDone.timeIn) + ')</span>' : '— none yet'}<br>
         ${baysUsed.length > 1 ? '<strong>Bays used:</strong> ' + arvEsc(baysUsed.join(', ')) + '<br>' : ''}
       </div>
     </div>
