@@ -1373,6 +1373,11 @@ body.dark-mode .scan-banner {
   <div class="dash-toolbar">
     <button class="btn btn-secondary btn-sm" onclick="openDashCustomize()">Customize dashboard</button>
   </div>
+
+  <!-- New customer feedback alert — shows until someone opens the feedback
+       report (or dismisses it) on this device, so ratings are never missed -->
+  <div id="feedback-alert-banner" style="display:none"></div>
+
   <div class="dash-grid" id="dash-infographics"></div>
 
   <!-- Driveway arrivals feed — recent number-plate detections from the driveway
@@ -6296,7 +6301,113 @@ function renderDashboard() {
   // (stats, infographics, handover notes, recent activity) from live data.
   renderDashInfographics();
   renderParkingMap();
+  try { renderFeedbackAlert(); } catch (e) {}
   if (arrivalsOn()) { try { loadArrivals(); } catch (e) {} }
+}
+
+// ═══════════════════════════════════════════════════
+// NEW FEEDBACK ALERT — customers rate from their QR ticket after pickup;
+// staff rarely open the feedback report, so new ratings surface here:
+//   • a banner pinned to the top of the Dashboard until viewed/dismissed
+//   • a live toast the moment a rating lands (via realtime sync)
+// "Seen" is per device (settings.feedbackSeenAt) so each iPad/phone shows
+// the banner until someone on THAT device has looked.
+// ═══════════════════════════════════════════════════
+const starStr = v => '★'.repeat(Math.max(0, Math.min(5, v))) + '☆'.repeat(5 - Math.max(0, Math.min(5, v)));
+
+function unseenFeedback() {
+  const since = settings.feedbackSeenAt || '';
+  return entries
+    .filter(e => e.rating != null && e.rating >= 1 && e.rating <= 5 && e.ratingAt && (!since || e.ratingAt > since))
+    .sort((a, b) => new Date(b.ratingAt) - new Date(a.ratingAt));
+}
+
+function renderFeedbackAlert() {
+  const el = document.getElementById('feedback-alert-banner');
+  if (!el) return;
+  const fresh = unseenFeedback();
+  if (!fresh.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const low = fresh.filter(e => e.rating <= 3);
+  const urgent = low.length > 0;
+  const items = fresh.slice(0, 3).map(e => {
+    const who = [e.name, e.rego].filter(Boolean).join(' · ') || 'Guest';
+    const when = e.ratingAt ? (fmtDate(new Date(e.ratingAt)) + ' ' + fmtTime(new Date(e.ratingAt))) : '';
+    const comment = (e.ratingComment || '').trim();
+    return `<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:4px 0;font-size:13px">
+      <span style="color:${e.rating <= 3 ? '#ffb3b3' : '#ffd97a'};letter-spacing:2px;white-space:nowrap">${starStr(e.rating)}</span>
+      <b>${arvEsc(who)}</b>
+      <span style="opacity:.75;font-size:11px">${when}</span>
+      ${comment ? `<span style="flex-basis:100%;font-style:italic;opacity:.95">“${arvEsc(comment.length > 140 ? comment.slice(0, 140) + '…' : comment)}”</span>` : ''}
+    </div>`;
+  }).join('');
+  const more = fresh.length > 3 ? `<div style="font-size:11px;opacity:.8;margin-top:2px">+ ${fresh.length - 3} more — open the feedback report</div>` : '';
+  el.style.display = '';
+  el.innerHTML = `<div style="background:${urgent ? 'linear-gradient(135deg,#7a1f1f,#531620)' : 'linear-gradient(135deg,#531620,#3a0f17)'};color:#fff;border-left:4px solid ${urgent ? '#ff6b6b' : '#e0a640'};border-radius:8px;padding:12px 16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.18)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-weight:700;font-size:14px">${urgent
+        ? '⚠ Customer feedback needs attention — ' + low.length + ' low rating' + (low.length !== 1 ? 's' : '')
+        : '⭐ New customer feedback (' + fresh.length + ')'}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="goReport('feedback')" style="background:#fff;color:var(--maroon);border:none">View feedback</button>
+        <button class="btn btn-secondary btn-sm" onclick="markFeedbackSeen()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)">✕ Dismiss</button>
+      </div>
+    </div>
+    <div style="margin-top:6px">${items}${more}</div>
+  </div>`;
+}
+
+// Opening the feedback report (or dismissing the banner) marks everything
+// current as seen on this device.
+function markFeedbackSeen() {
+  settings.feedbackSeenAt = new Date().toISOString();
+  saveSettingsToStorage();
+  renderFeedbackAlert();
+}
+
+// Live toast when a rating arrives while the app is open (realtime sync).
+function maybeAlertFeedback(newEntry, prevEntry) {
+  if (!newEntry || newEntry.rating == null || !newEntry.ratingAt) return;
+  // Only when the rating is new or actually changed (incl. a comment added).
+  if (prevEntry && prevEntry.ratingAt === newEntry.ratingAt
+      && prevEntry.rating === newEntry.rating
+      && (prevEntry.ratingComment || '') === (newEntry.ratingComment || '')) return;
+  showFeedbackToast(newEntry);
+  try { renderFeedbackAlert(); } catch (e) {}
+}
+
+function showFeedbackToast(e) {
+  let toast = document.getElementById('save-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'save-toast';
+    toast.className = 'save-toast';
+    document.body.appendChild(toast);
+  }
+  const bad = e.rating <= 3;
+  const who = [e.name, e.rego].filter(Boolean).join(' · ') || 'Guest';
+  const comment = (e.ratingComment || '').trim();
+  toast.innerHTML = `
+    <div class="save-toast-icon" style="background:${bad ? '#a83838' : '#e0a640'};color:#fff">${bad ? '⚠' : '★'}</div>
+    <div class="save-toast-content">
+      <div class="save-toast-title" style="color:${bad ? '#ff9b9b' : '#e0a640'}">${bad ? 'Low rating — needs attention' : 'New customer feedback'}</div>
+      <div class="save-toast-details">
+        <div><span style="letter-spacing:2px;color:${bad ? '#ff9b9b' : '#e0a640'}">${starStr(e.rating)}</span> · <strong>${arvEsc(who)}</strong></div>
+        ${comment ? `<div style="margin-top:2px;font-style:italic">“${arvEsc(comment.length > 90 ? comment.slice(0, 90) + '…' : comment)}”</div>` : ''}
+      </div>
+      <div class="save-toast-meta">Ticket ${arvEsc(e.ticket || '—')} · also shown on the Dashboard</div>
+    </div>
+    <button class="save-toast-close" onclick="dismissSaveToast()">✕</button>
+  `;
+  toast.style.background = bad ? 'linear-gradient(135deg,#7a1f1f,#3a0f17)' : 'linear-gradient(135deg,#531620,#3a0f17)';
+  toast.style.borderLeftColor = bad ? '#ff6b6b' : '#e0a640';
+  toast.classList.add('show');
+  if (typeof hapticFeedback === 'function') hapticFeedback(bad ? 'error' : 'success');
+  if (toast.dismissTimer) clearTimeout(toast.dismissTimer);
+  toast.dismissTimer = setTimeout(() => {
+    dismissSaveToast();
+    toast.style.background = '';
+    toast.style.borderLeftColor = '';
+  }, 10000);
 }
 
 // ─── DRIVEWAY ARRIVALS FEED ───
@@ -11049,6 +11160,8 @@ function goReport(g) {
   showReportsGroup(g);
   if (g === 'payments') renderShopAccounts();
   if (g === 'monthly') renderMonthlyReport();
+  // Opening the feedback report counts as having seen the new ratings.
+  if (g === 'feedback') markFeedbackSeen();
 }
 
 function renderSettings() {
@@ -14035,6 +14148,9 @@ function handleRealtimeEntryChange(payload) {
     scanBagAlarms();
     // A round was assigned to ME (e.g. by the desk) → alert this phone.
     scanBagAssignedAlarms();
+    // A customer left (or changed) a rating from their ticket page → toast +
+    // dashboard banner so the feedback isn't missed.
+    try { maybeAlertFeedback(newEntry, prevEntry); } catch (e) {}
   } else if (payload.eventType === 'DELETE') {
     entries = entries.filter(e => e.id !== payload.old.id);
   }
