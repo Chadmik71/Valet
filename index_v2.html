@@ -6738,7 +6738,17 @@ function renderFeedbackReport(filtered) {
   const el = document.getElementById('rep-feedback');
   if (!el) return;
   const rated = filtered.filter(e => e.rating != null && e.rating >= 1 && e.rating <= 5);
-  if (!rated.length) { el.innerHTML = '<div class="empty">No feedback in this range</div>'; return; }
+  if (!rated.length) {
+    // Distinct, helpful empty state: point at ratings sitting outside the
+    // selected range (easy to mistake for "no feedback at all"), or explain
+    // where feedback comes from when there's none yet.
+    const allRated = entries.filter(e => e.rating != null && e.rating >= 1 && e.rating <= 5)
+      .sort((a, b) => new Date(b.ratingAt || b.timeIn) - new Date(a.ratingAt || a.timeIn));
+    el.innerHTML = allRated.length
+      ? `<div class="empty">⭐ No ratings in the selected date range — but ${allRated.length} exist${allRated.length === 1 ? 's' : ''} outside it (latest ${fmtDate(new Date(allRated[0].ratingAt || allRated[0].timeIn))}). Widen the range above to see ${allRated.length === 1 ? 'it' : 'them'}.</div>`
+      : '<div class="empty">⭐ No customer ratings yet. After pickup, customers can leave a 1-tap star rating on their QR ticket page — it lands here.</div>';
+    return;
+  }
   const n = rated.length;
   const avg = rated.reduce((s, e) => s + Number(e.rating), 0) / n;
   const dist = [0, 0, 0, 0, 0];   // index 0 = 1★ … 4 = 5★
@@ -10327,42 +10337,72 @@ function renderStayTiers(filtered) {
   c.innerHTML = repCards(cards) + bars;
 }
 
-// Repeat Customers: group visits by phone (else number plate) and surface the
-// ones who came back, with visit count and total spend.
+// Repeat Customers: who in this range has been here before. Visits are linked
+// by phone OR plate across the WHOLE history (union-find), so a customer who
+// came yesterday and again today still counts as returning when the range is
+// just "Today", and a missing phone on one visit doesn't split them in two.
 function renderRepeatCustomers(filtered) {
   const c = document.getElementById('rep-repeat');
   if (!c) return;
   if (!filtered.length) { c.innerHTML = '<div class="empty">No customers in this range</div>'; return; }
+
+  // Identity keys for a visit: normalised plate + phone digits.
+  const keysOf = e => {
+    const ks = [];
+    const r = normaliseRego(e.rego); if (r) ks.push('r:' + r);
+    const p = ((e.phone || '') + '').replace(/\D/g, ''); if (p.length >= 8) ks.push('p:' + p);
+    return ks;
+  };
+  // Union-find: any two visits sharing a plate or a phone are one customer.
+  const parent = {};
+  const find = k => { let r = k; while (parent[r] !== r) r = parent[r]; while (parent[k] !== r) { const n = parent[k]; parent[k] = r; k = n; } return r; };
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[rb] = ra; };
+  entries.forEach(e => {
+    const ks = keysOf(e);
+    ks.forEach(k => { if (!(k in parent)) parent[k] = k; });
+    for (let i = 1; i < ks.length; i++) union(ks[0], ks[i]);
+  });
+  const rootOf = e => { const ks = keysOf(e); return ks.length ? find(ks[0]) : null; };
+
+  // Lifetime visits & spend per linked customer, across all history.
+  const life = {};
+  entries.forEach(e => {
+    const root = rootOf(e); if (!root) return;
+    const L = life[root] || (life[root] = { visits: 0, spend: 0 });
+    L.visits++; L.spend += (e.totalFee || 0);
+  });
+
+  // Customers actually seen in this range.
   const groups = {};
   filtered.forEach(e => {
-    const phone = e.phone && e.phone.replace(/\D/g, '');
-    const rego = e.rego && e.rego.toUpperCase().replace(/\s/g, '');
-    const key = phone || rego;
-    if (!key) return;
-    const g = groups[key] || (groups[key] = { visits: 0, spend: 0, name: '', label: phone ? e.phone : e.rego, last: '' });
-    g.visits++;
-    g.spend += (e.totalFee || 0);
+    const root = rootOf(e); if (!root) return;
+    const g = groups[root] || (groups[root] = { root, inRange: 0, name: '', label: e.phone || e.rego, last: '' });
+    g.inRange++;
     if (e.name && !g.name) g.name = e.name;
-    if (!g.last || e.timeIn > g.last) g.last = e.timeIn;
+    if (!g.last || e.timeIn > g.last) { g.last = e.timeIn; g.label = e.phone || e.rego; }
   });
+
   const all = Object.values(groups);
   const distinct = all.length;
-  const returning = all.filter(g => g.visits > 1).sort((a, b) => b.visits - a.visits || b.spend - a.spend);
   if (!distinct) { c.innerHTML = '<div class="empty">No customers with contact details in this range</div>'; return; }
-  const repeatPct = distinct ? Math.round(returning.length / distinct * 100) : 0;
+  const returning = all
+    .map(g => ({ ...g, visits: (life[g.root] || { visits: g.inRange }).visits, spend: (life[g.root] || { spend: 0 }).spend }))
+    .filter(g => g.visits > 1)
+    .sort((a, b) => b.visits - a.visits || b.spend - a.spend);
+  const repeatPct = Math.round(returning.length / distinct * 100);
   const cards = [
-    ['Distinct customers', String(distinct), 'with phone or plate', 'var(--maroon)'],
-    ['Returning', String(returning.length), `${repeatPct}% came back`, 'var(--green)'],
-    ['Repeat visits', String(returning.reduce((a, g) => a + g.visits, 0)), 'by returning customers', 'var(--bronze)'],
+    ['Distinct customers', String(distinct), 'seen in this range', 'var(--maroon)'],
+    ['Returning', String(returning.length), `${repeatPct}% have visited before`, 'var(--green)'],
+    ['Their lifetime visits', String(returning.reduce((a, g) => a + g.visits, 0)), 'all-time, these customers', 'var(--bronze)'],
   ];
   let body;
   if (!returning.length) {
     body = '<div class="empty">No repeat customers in this range yet</div>';
   } else {
     const max = Math.max(...returning.map(g => g.visits));
-    body = repHeading('Returning customers')
+    body = repHeading('Returning customers · all-time visits &amp; spend')
       + returning.slice(0, 50).map(g => repBar(
-          `${g.name ? g.name + ' · ' : ''}${g.label}`,
+          arvEsc(`${g.name ? g.name + ' · ' : ''}${g.label}`),
           `${g.visits} visits · ${fmtMoney(g.spend)}`,
           g.visits / max, 'linear-gradient(90deg,var(--maroon),var(--maroon-light))')).join('');
     if (returning.length > 50) body += `<div style="font-size:11px;color:var(--text-muted);margin-top:8px">Showing top 50 of ${returning.length} returning customers.</div>`;
@@ -10452,7 +10492,13 @@ function renderIncidents(filtered) {
   if (!c) return;
   const incidents = filtered.filter(e => e.incident && e.incident.condition === 'damage')
     .sort((a, b) => new Date(b.incident.at || b.timeOut || 0) - new Date(a.incident.at || a.timeOut || 0));
-  if (!incidents.length) { c.innerHTML = '<div class="empty">No incidents in this range — no new damage logged at handover</div>'; return; }
+  if (!incidents.length) {
+    const allInc = entries.filter(e => e.incident && e.incident.condition === 'damage');
+    c.innerHTML = allInc.length
+      ? `<div class="empty">⚠ No incidents in the selected date range — ${allInc.length} exist${allInc.length === 1 ? 's' : ''} outside it. Widen the range above to see ${allInc.length === 1 ? 'it' : 'them'}.</div>`
+      : '<div class="empty">✓ No incidents ever logged — no car has come back with new damage. When staff record damage at handover (Mark Out → “New damage / incident”), it appears here.</div>';
+    return;
+  }
   const acked = incidents.filter(e => e.incident.ack).length;
   const cards = [
     ['Incidents', String(incidents.length), 'new damage logged', '#a83838'],
