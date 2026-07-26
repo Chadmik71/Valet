@@ -9164,7 +9164,7 @@ function setReportRange(range) {
     if (entries.length === 0) { from = to; }
     else {
       const oldest = entries.reduce((a,e) => e.timeIn < a ? e.timeIn : a, entries[0].timeIn);
-      from = oldest.slice(0,10);
+      from = localDateStr(oldest);
     }
   }
   document.getElementById('report-from').value = from;
@@ -10770,7 +10770,10 @@ function downloadMgmtPDF() {
   const from = document.getElementById('report-from').value;
   const to = document.getElementById('report-to').value;
   if (!from || !to) { alert('Pick a date range first.'); return; }
-  const filtered = entries.filter(e => { const d = (e.timeIn || '').slice(0, 10); return d >= from && d <= to; });
+  // Sydney-local day, matching the on-screen report — slicing the raw UTC ISO
+  // string put pre-10am cars on the previous day, so the PDF disagreed with
+  // the screen for the same range.
+  const filtered = entries.filter(e => { const d = e.timeIn ? localDateStr(e.timeIn) : ''; return d >= from && d <= to; });
   if (!filtered.length) { alert('No data in this date range.'); return; }
   const m = mgmtSummaryData(filtered);
   const validations = tenantValidationData(filtered);
@@ -10838,7 +10841,7 @@ function checkEndOfDay() {
   const now = new Date();
   const closing = getClosingTimeForToday();
   const minsToClose = (closing - now) / 60000;
-  const today = now.toISOString().slice(0, 10);
+  const today = localDateStr(now);
 
   // 15-min warning
   if (minsToClose <= 15 && minsToClose > 0 && eodWarnedFor !== today + '-pre') {
@@ -10884,7 +10887,9 @@ let handoverDraft = '';
 let handoverSavedAt = null;
 
 function loadHandoverNotes() {
-  const today = new Date().toISOString().slice(0, 10);
+  // Local (Sydney) day — with the UTC date, notes written before 10 am were
+  // stamped with yesterday's date and silently vanished at 10 am.
+  const today = localDateStr(new Date());
   // Try cloud first if connected
   if (supa && cloudSettings && cloudSettings.handover_date === today && cloudSettings.handover_notes) {
     handoverDraft = cloudSettings.handover_notes;
@@ -10922,7 +10927,7 @@ function saveHandoverNotes() {
   const ta = document.getElementById('handover-notes');
   const text = ta ? ta.value : handoverDraft;
   handoverDraft = text;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr(new Date());
   handoverSavedAt = new Date().toISOString();
   localStorage.setItem('chatswood_handover_notes', JSON.stringify({ text, date: today, savedAt: handoverSavedAt }));
   updateHandoverSavedStatus(handoverSavedAt);
