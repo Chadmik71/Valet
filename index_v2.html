@@ -1922,12 +1922,12 @@ body.dark-mode .scan-banner {
             <th>Ticket</th>
             <th>Customer</th>
             <th>Rego</th>
-            <th>Brand</th>
-            <th>Bay</th>
-            <th>Time In</th>
-            <th>Time Out</th>
-            <th>Duration</th>
-            <th>Fee</th>
+            <th onclick="toggleDoneSort('brand')" style="cursor:pointer;user-select:none" title="Click to sort by brand">Brand <span id="done-brand-sort-arrow" style="font-size:9px"></span></th>
+            <th onclick="toggleDoneSort('bay')" style="cursor:pointer;user-select:none" title="Click to sort by bay number">Bay <span id="done-bay-sort-arrow" style="font-size:9px"></span></th>
+            <th onclick="toggleDoneSort('timein')" style="cursor:pointer;user-select:none" title="Click to sort by check-in time">Time In <span id="done-timein-sort-arrow" style="font-size:9px"></span></th>
+            <th onclick="toggleDoneSort('timeout')" style="cursor:pointer;user-select:none" title="Click to sort by check-out time">Time Out <span id="done-timeout-sort-arrow" style="font-size:9px"></span></th>
+            <th onclick="toggleDoneSort('duration')" style="cursor:pointer;user-select:none" title="Click to sort by length of stay">Duration <span id="done-duration-sort-arrow" style="font-size:9px"></span></th>
+            <th onclick="toggleDoneSort('fee')" style="cursor:pointer;user-select:none" title="Click to sort by fee charged">Fee <span id="done-fee-sort-arrow" style="font-size:9px"></span></th>
             <th>Paid</th>
             <th>Action</th>
           </tr>
@@ -7182,6 +7182,20 @@ function toggleSort(col) {
   renderActive();
 }
 
+// Column sort for Checked Out Today. doneSortCol null = default (most recently
+// out first). Same click behaviour as the on-site table above.
+let doneSortCol = null;   // null | 'brand' | 'bay' | 'timein' | 'timeout' | 'duration' | 'fee'
+let doneSortDir = 'asc';
+function toggleDoneSort(col) {
+  if (doneSortCol === col) {
+    doneSortDir = doneSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    doneSortCol = col;
+    doneSortDir = 'asc';
+  }
+  renderCheckedOutToday();
+}
+
 // The Active view is made of TWO independent sections:
 //   1. the on-site car list        (renderActiveList — may bail out early when empty)
 //   2. the "Checked Out Today" list (renderCheckedOutToday)
@@ -7359,15 +7373,47 @@ function renderCheckedOutToday() {
   const countEl = document.getElementById('done-count');
   if (!tbody) return;
   const today = new Date();
-  const done = entries
-    .filter(e => e.timeOut && isSameDay(e.timeOut, today))
-    .sort((a, b) => new Date(b.timeOut) - new Date(a.timeOut));   // most recently out first
+  const done = entries.filter(e => e.timeOut && isSameDay(e.timeOut, today));
   if (countEl) countEl.textContent = `${done.length} car${done.length !== 1 ? 's' : ''} · ${fmtMoney(done.reduce((s, e) => s + (e.totalFee || 0), 0))}`;
   if (done.length === 0) {
     tbody.innerHTML = '<tr><td colspan="11" class="empty" style="border-bottom:none">No cars checked out yet today</td></tr>';
     if (cardWrap) cardWrap.innerHTML = '<div class="empty" style="text-align:center;color:var(--text-muted);padding:18px">No cars checked out yet today</div>';
     return;
   }
+
+  // Update the sort arrows on the sortable column headers.
+  ['brand', 'bay', 'timein', 'timeout', 'duration', 'fee'].forEach(col => {
+    const el = document.getElementById('done-' + col + '-sort-arrow');
+    if (!el) return;
+    el.textContent = doneSortCol === col ? (doneSortDir === 'asc' ? '▲' : '▼') : '';
+    el.style.color = 'var(--maroon)';
+  });
+
+  const dir = doneSortDir === 'asc' ? 1 : -1;
+  done.sort((a, b) => {
+    switch (doneSortCol) {
+      case 'brand':
+        return dir * (a.brand || '').localeCompare(b.brand || '', undefined, { sensitivity: 'base' });
+      case 'bay': {
+        // Numeric-aware ("10" after "2"); cars with no bay always sit last.
+        const ae = !(a.bay || '').trim(), be = !(b.bay || '').trim();
+        if (ae && be) return 0;
+        if (ae) return 1;
+        if (be) return -1;
+        return dir * a.bay.localeCompare(b.bay, undefined, { numeric: true, sensitivity: 'base' });
+      }
+      case 'timein':
+        return dir * (new Date(a.timeIn) - new Date(b.timeIn));
+      case 'timeout':
+        return dir * (new Date(a.timeOut) - new Date(b.timeOut));
+      case 'duration':
+        return dir * ((new Date(a.timeOut) - new Date(a.timeIn)) - (new Date(b.timeOut) - new Date(b.timeIn)));
+      case 'fee':
+        return dir * ((a.totalFee || 0) - (b.totalFee || 0));
+      default:
+        return new Date(b.timeOut) - new Date(a.timeOut);   // most recently out first
+    }
+  });
   const payLabel = (e) => {
     if (e.paymentStatus === 'shop') return 'Shop' + (e.shopAccount ? ': ' + e.shopAccount : '');
     if (e.paymentStatus === 'comp') return 'Comp';
