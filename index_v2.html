@@ -13842,6 +13842,51 @@ async function cloudLoadAllEntries() {
   return (data || []).map(dbToJs);
 }
 
+// Incremental reconcile used by the routine 60s poll. Pulls ONLY rows whose
+// updated_at advanced past our high-water mark (a DB trigger bumps updated_at to
+// now() on every insert/update, so this reliably catches all changes), then
+// merges them into `entries`. When nothing changed the query returns zero rows —
+// a tiny response — instead of re-downloading the whole table every minute.
+// Returns the rows actually applied (for print-station detection), or null when
+// we have no baseline yet (caller falls back to a full load).
+async function cloudReconcileDelta() {
+  if (DEMO_MODE) return [];
+  if (lastEntriesSyncTs == null) return null;
+  // Strict `>` the high-water mark, so when nothing has changed the response is
+  // empty (near-zero egress — the whole point). The realtime socket is the
+  // primary live channel, and the full reconciles on tab-focus / socket-reconnect
+  // are the safety net that re-syncs everything (incl. deletes) periodically, so
+  // this poll doesn't need a rewind window.
+  const { data, error } = await supa
+    .from('entries')
+    .select('*')
+    .gt('updated_at', lastEntriesSyncTs)
+    .order('updated_at', { ascending: true })
+    .limit(2000);
+  if (error) throw error;
+  const changed = (data || []).map(dbToJs);
+  if (!changed.length) return changed;
+  // Advance the high-water mark to the newest row we just saw.
+  changed.forEach(ce => { if (ce.updatedAt && ce.updatedAt > lastEntriesSyncTs) lastEntriesSyncTs = ce.updatedAt; });
+  // Honour in-flight local edits/deletes exactly like mergeCloudWithPendingLocal:
+  // a locally-deleted id must not be resurrected, and an id mid-upsert keeps the
+  // local copy so the cloud snapshot can't clobber an unsynced edit.
+  const pendingUpsertIds = new Set(entriesSyncQueue);
+  const pendingDeleteIds = new Set(entriesDeleteQueue);
+  pendingWrites.forEach(w => {
+    if (w.op === 'delete' && w.id) pendingDeleteIds.add(w.id);
+    else if (w.op === 'upsert' && w.data && w.data.id) pendingUpsertIds.add(w.data.id);
+  });
+  const applied = changed.filter(ce => !pendingDeleteIds.has(ce.id) && !pendingUpsertIds.has(ce.id));
+  if (!applied.length) return applied;
+  const applyById = new Map(applied.map(ce => [ce.id, ce]));
+  const known = new Set(entries.map(e => e.id));
+  entries = entries.map(e => applyById.get(e.id) || e);          // replace changed rows in place
+  applied.forEach(ce => { if (!known.has(ce.id)) entries.push(ce); }); // append genuinely new rows
+  if (!DEMO_MODE) localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  return applied;
+}
+
 async function cloudUpsertEntry(entry) {
   if (DEMO_MODE) return;   // demo edits stay in-memory, never hit the real DB
   const dbRow = jsToDb(entry);
@@ -14074,6 +14119,11 @@ function scheduleRealtimeReconnect() {
 // event (dropped socket, backgrounded phone). Reuses loadFromCloud but suppresses
 // the banner, and throttles so a burst of focus/visibility events can't hammer it.
 let lastReconcileAt = 0;
+// High-water mark: the newest `updated_at` we've pulled from the cloud. The
+// routine 60s poll uses this to fetch ONLY rows that changed since, instead of
+// re-downloading the whole table every minute (which burned ~15 GB/mo of egress
+// and tripped the free-plan quota). Set by every full loadFromCloud().
+let lastEntriesSyncTs = null;
 async function reconcileFromCloud(reason) {
   if (!supa || !currentUser || !navigator.onLine) return;
   const now = Date.now();
@@ -14087,12 +14137,27 @@ async function reconcileFromCloud(reason) {
   // reload produces no diff → no reprint storm.
   const before = new Map(entries.map(e => [e.id, tagSig(e)]));
   try {
-    await loadFromCloud(true);   // silent — no "Syncing…" banner; replaces `entries`
+    // The once-a-minute 'poll' is by far the most frequent trigger, so it takes
+    // the cheap INCREMENTAL path: fetch only rows whose updated_at advanced past
+    // our high-water mark (an empty, near-zero-byte response when nothing has
+    // changed). Every OTHER trigger — realtime reconnect, tab focus/visibility —
+    // is infrequent and stays a FULL reconcile, which also catches row DELETES
+    // and settings/staff changes the delta can't see. This removes the egress
+    // hog while preserving all the old safety-net behaviour.
+    let changed;
+    if (reason === 'poll' && lastEntriesSyncTs != null) {
+      changed = await cloudReconcileDelta();          // merges deltas into `entries`
+      if (changed == null) { await loadFromCloud(true); changed = entries; }  // no baseline → full
+    } else {
+      await loadFromCloud(true);   // silent — no "Syncing…" banner; replaces `entries`
+      changed = entries;
+    }
+    if (!changed.length) return;   // idle: nothing changed → skip repaint & print
     refreshActiveViews();
     // Only the print station prints, and only if we had a prior snapshot (guards
     // against a storm if this ever runs before the initial load populated entries).
     if (settings.printStation && printerConfigured() && before.size) {
-      entries.forEach(e => {
+      changed.forEach(e => {
         if (e.timeOut || !e.bay) return;               // only active, bay-assigned cars get a tag
         const prevSig = before.get(e.id);
         // New to us (missed INSERT) or the tag content changed while we were away
@@ -14966,6 +15031,9 @@ async function loadFromCloud(silent) {
     ]);
     cloudSettings = freshSettings;
     entries = mergeCloudWithPendingLocal(cloudEntries);   // preserve in-flight local edits/deletes
+    // Advance the delta high-water mark from the full snapshot we just pulled, so
+    // subsequent 60s polls fetch only what changes after this point.
+    cloudEntries.forEach(ce => { if (ce.updatedAt && (lastEntriesSyncTs == null || ce.updatedAt > lastEntriesSyncTs)) lastEntriesSyncTs = ce.updatedAt; });
     if (staff) staffRoster = staff;
     settings.prefix = cloudSettings.ticket_prefix || settings.prefix || 'A-';
     if (cloudSettings.next_ticket_num !== undefined && cloudSettings.next_ticket_num !== null) {
