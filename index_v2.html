@@ -14220,6 +14220,12 @@ async function reconcileFromCloud(reason) {
   const now = Date.now();
   if (now - lastReconcileAt < 8000) return;   // at most once per 8s
   lastReconcileAt = now;
+  // Heal a dead/rotated JWT BEFORE we read. `entries` is RLS-gated to the
+  // `authenticated` role, so an anon read doesn't error — RLS silently returns
+  // ZERO rows. Without this, a device that dropped to anon (shared-account token
+  // rotation) would do a full reconcile, get [], and wipe the whole board. Same
+  // guard the write paths (doCloudSync/flushPendingWrites) already use.
+  await ensureAuthSession();
   // Snapshot (id → tag content) BEFORE the re-pull. The print station uses this
   // to find check-ins / bay assignments it MISSED while its realtime socket was
   // down and print those tags — the reconcile path doesn't go through
@@ -15123,12 +15129,32 @@ async function loadFromCloud(silent) {
     if (!supa) {
       await initSupabase();
     }
-    const [cloudEntries, freshSettings, staff] = await Promise.all([
+    let [cloudEntries, freshSettings, staff] = await Promise.all([
       cloudLoadAllEntries(),
       cloudLoadSettings(),
       cloudListStaff().catch(() => null),
     ]);
     cloudSettings = freshSettings;
+    // BACKSTOP against a board wipe: an empty entries read while we still hold
+    // cars locally is almost always a BLOCKED read, not a genuinely empty table.
+    // `entries` is RLS-gated to `authenticated`, so an anon/dead-session read
+    // doesn't error — RLS just returns zero rows. Replacing `entries` with [] here
+    // (and caching [] to localStorage) is exactly what made all active cars vanish.
+    // So: if the cloud says "no entries" but we have some, heal the session and
+    // re-fetch once. If it comes back with rows, use them; if it's STILL empty,
+    // keep the cached board instead of clobbering it (a reload can force-clear a
+    // genuinely-emptied table — an accidental wipe is far worse than a stale board).
+    if ((cloudEntries || []).length === 0 && entries.length > 0) {
+      await ensureAuthSession();
+      const retry = await cloudLoadAllEntries();
+      if ((retry || []).length > 0) {
+        cloudEntries = retry;                 // session was stale — real data recovered
+      } else {
+        console.warn('loadFromCloud: cloud returned 0 entries while ' + entries.length + ' held locally — keeping cached board (suspected blocked read).');
+        if (!silent) showCloudLoadStatus('Cloud returned no entries — keeping local board (' + entries.length + ' entries). Reload to force a full resync.', 'error');
+        return;                               // do NOT clobber entries or localStorage
+      }
+    }
     entries = mergeCloudWithPendingLocal(cloudEntries);   // preserve in-flight local edits/deletes
     // Advance the delta high-water mark from the full snapshot we just pulled, so
     // subsequent 60s polls fetch only what changes after this point.
