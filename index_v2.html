@@ -3311,6 +3311,9 @@ async function doCloudSync() {
   if (isCloudSyncing) return; // Prevent overlapping syncs
   isCloudSyncing = true;
   try {
+    // Make sure our Supabase session is alive before writing — a dead JWT would
+    // otherwise reject every upsert as anon and silently strand the car locally.
+    await ensureAuthSession();
     // Loop until both queues are empty. Items can be added to the queue
     // while we're awaiting a network round-trip — without this loop, those
     // items get orphaned (the second-of-two quick checkouts would never
@@ -4043,6 +4046,10 @@ function saveEntry() {
   // Show prominent success toast with details
   showSaveToast(entry);
   hapticFeedback('success');
+  // Safety net: confirm this check-in actually reached the cloud. If a dead
+  // session (or network drop) stranded it locally, heal + retry, and only if it
+  // STILL hasn't synced, warn the operator instead of leaving a silent "Saved!".
+  verifyCheckinSynced(entry);
 
   // Auto-print the key tag on check-in — but only on THIS device if it's the
   // print station (wired to a printer) and a bay is assigned. A phone (station
@@ -4067,6 +4074,32 @@ function saveEntry() {
   // straight away (opens Messages pre-filled — operator taps Send).
   if (entry.phone) {
     sendQRSms(entry.id);
+  }
+}
+
+// Confirm a just-saved check-in actually synced to the cloud. saveData() fires
+// an immediate sync, but if that failed (dead session / offline) the row sits in
+// pendingWrites and other devices never see it. Give the immediate sync a moment,
+// then — if still stranded — heal the session and force a retry; only surface a
+// visible warning if it genuinely can't sync, so "Saved!" never lies.
+async function verifyCheckinSynced(entry) {
+  if (DEMO_MODE || !supa || !currentUser) return;
+  const isStranded = () =>
+    pendingWrites.some(w => w.op === 'upsert' && w.data && w.data.id === entry.id) ||
+    entriesSyncQueue.has(entry.id);
+  await new Promise(r => setTimeout(r, 1500));
+  if (!isStranded()) return;                 // synced fine — nothing to do
+  await ensureAuthSession();
+  await flushPendingWrites();
+  try { await doCloudSync(); } catch (_) {}
+  await new Promise(r => setTimeout(r, 500));
+  if (isStranded()) {
+    showCloudLoadStatus(
+      `⚠ ${entry.rego || 'This car'} (bay ${entry.bay || '—'}) has NOT synced to the cloud yet — ` +
+      `other devices can't see it. Check your connection; it will keep retrying. ` +
+      `If it persists, log out and back in.`,
+      'error',
+    );
   }
 }
 
@@ -13887,6 +13920,58 @@ async function cloudReconcileDelta() {
   return applied;
 }
 
+// ─── Keep the Supabase auth session alive ───
+// The `entries` table is RLS-gated to the `authenticated` role (no anon access),
+// so a write only lands if this browser holds a live Supabase JWT. That JWT lasts
+// ~1h; supabase-js auto-refreshes it, BUT every device shares ONE dashboard
+// account and Supabase rotates refresh tokens — so one device refreshing can
+// invalidate another's token, silently dropping it to anon. When that happens the
+// app still shows "logged in" (that's our own 24h valet_session) yet every
+// check-in is rejected (401) and lives only in local storage → the car never
+// syncs and other staff never see it. This heals that: verify the JWT, and if
+// it's dead, re-mint a fresh session server-side using our device token (which
+// survives rotation because the shared credential lives on the server).
+let _authHealInFlight = null;
+async function ensureAuthSession() {
+  if (DEMO_MODE) return true;
+  if (!supa || !currentUser) return false;
+  if (_authHealInFlight) return _authHealInFlight;   // collapse concurrent callers
+  _authHealInFlight = (async () => {
+    try {
+      const { data: { session } } = await supa.auth.getSession();
+      // Healthy if the access token has comfortably more than a minute left.
+      if (session && session.access_token && session.expires_at &&
+          (session.expires_at * 1000 - Date.now() > 60000)) return true;
+      // Try the normal client refresh first (works while our refresh token is
+      // still valid — the cheap, common case).
+      if (session && session.refresh_token) {
+        try {
+          const { data, error } = await supa.auth.refreshSession();
+          if (!error && data && data.session && data.session.access_token) return true;
+        } catch (_) { /* fall through to server re-mint */ }
+      }
+      // Refresh unavailable/failed (token rotated out, or no session at all after
+      // a reload). Ask the server for a brand-new shared-account session, proving
+      // we logged in once via the device token.
+      const tok = localStorage.getItem('valet_device_token');
+      if (!tok) return false;
+      const { data, error } = await supa.functions.invoke('staff-auth', {
+        body: { action: 'refresh', device_token: tok },
+      });
+      if (!error && data && data.session && data.session.access_token) {
+        try { await supa.auth.setSession(data.session); } catch (_) {}
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  })();
+  const ok = await _authHealInFlight;
+  _authHealInFlight = null;
+  return ok;
+}
+
 async function cloudUpsertEntry(entry) {
   if (DEMO_MODE) return;   // demo edits stay in-memory, never hit the real DB
   const dbRow = jsToDb(entry);
@@ -13983,6 +14068,12 @@ async function cloudLogin(username, password) {
       if (data.user && data.session && data.session.access_token) {
         try { await supa.auth.setSession(data.session); } catch (_) {}
       }
+      // Stash the per-device token so this browser can silently re-mint a fresh
+      // Supabase session later (see ensureAuthSession) if its JWT dies — e.g. the
+      // shared account's refresh token gets rotated out by another device. Without
+      // this, a dead session leaves the app looking logged-in while every cloud
+      // write is rejected as anon, so check-ins vanish. (Additive; safe if absent.)
+      if (data.device_token) { try { localStorage.setItem('valet_device_token', data.device_token); } catch (_) {} }
       return data.user; // { username, displayName, role } or null
     }
   } catch (_) {
@@ -14837,6 +14928,9 @@ function refreshActiveViewOnly() {
 // ─── Offline queue processing ───
 async function flushPendingWrites() {
   if (!supa || !currentUser || !navigator.onLine || pendingWrites.length === 0) return;
+  // Heal a dead session first so the retry can actually land — this is what
+  // auto-drains cars that were stranded while the JWT was expired.
+  await ensureAuthSession();
   const queue = [...pendingWrites];
   pendingWrites = [];
   for (const op of queue) {
@@ -14963,6 +15057,11 @@ async function completeLogin() {
   // 3) Initialise UI with whatever data we have now — clock, dark mode,
   //    dashboard render from cache, intervals, etc.
   initializeUI();
+  // 3b) Ensure the Supabase auth session is live before we read/write. On a page
+  //     reload the tab can come back "logged in" (our 24h valet_session) yet with
+  //     a dead Supabase JWT — reads return no PII and writes get rejected as anon.
+  //     Re-mint via the device token now so the whole session is healthy up front.
+  await ensureAuthSession();
   // 4) Fetch fresh data from cloud, then re-render. loadFromCloud has its
   //    own try/catch — it won't throw, even if the request fails.
   await loadFromCloud();
