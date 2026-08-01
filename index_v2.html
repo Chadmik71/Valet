@@ -14242,7 +14242,15 @@ async function reconcileFromCloud(reason) {
     // and settings/staff changes the delta can't see. This removes the egress
     // hog while preserving all the old safety-net behaviour.
     let changed;
-    if (reason === 'poll' && lastEntriesSyncTs != null) {
+    // SELF-HEAL a wiped board: an empty `entries` at poll time is abnormal for a
+    // running station and almost always means a prior blocked read wiped it. The
+    // cheap delta poll can't recover that — it only fetches rows changed AFTER the
+    // high-water mark, so it returns nothing and the board stays blank forever.
+    // Force a FULL reload instead; the session was healed above, so the repull
+    // returns the real rows and refreshActiveViews() repaints them. Once the board
+    // is populated again it drops back to the cheap delta poll, so no egress cost
+    // in steady state.
+    if (reason === 'poll' && lastEntriesSyncTs != null && entries.length > 0) {
       changed = await cloudReconcileDelta();          // merges deltas into `entries`
       if (changed == null) { await loadFromCloud(true); changed = entries; }  // no baseline → full
     } else {
