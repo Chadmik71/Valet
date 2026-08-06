@@ -14215,6 +14215,12 @@ let lastReconcileAt = 0;
 // re-downloading the whole table every minute (which burned ~15 GB/mo of egress
 // and tripped the free-plan quota). Set by every full loadFromCloud().
 let lastEntriesSyncTs = null;
+// One-shot arm/disarm for the empty-board self-heal below: true once we've
+// already force-healed an empty board and are waiting for it to repopulate.
+// Without this, a board that's LEGITIMATELY empty for days (no cars on site)
+// forces a full select() on every single 60s poll forever — the exact egress
+// hog the delta poll exists to avoid — instead of healing once and going quiet.
+let selfHealedEmptyBoard = false;
 async function reconcileFromCloud(reason) {
   if (!supa || !currentUser || !navigator.onLine) return;
   const now = Date.now();
@@ -14247,16 +14253,24 @@ async function reconcileFromCloud(reason) {
     // cheap delta poll can't recover that — it only fetches rows changed AFTER the
     // high-water mark, so it returns nothing and the board stays blank forever.
     // Force a FULL reload instead; the session was healed above, so the repull
-    // returns the real rows and refreshActiveViews() repaints them. Once the board
-    // is populated again it drops back to the cheap delta poll, so no egress cost
-    // in steady state.
-    if (reason === 'poll' && lastEntriesSyncTs != null && entries.length > 0) {
+    // returns the real rows and refreshActiveViews() repaints them. But a board
+    // that's genuinely, legitimately empty (no cars on site — overnight, a quiet
+    // day) looks identical to a wiped one, so this must fire ONCE per empty
+    // stretch, not on every poll forever — the delta poll already appends brand
+    // new check-ins fine even while `entries` is empty, so there's no ongoing
+    // need for the full pull. `selfHealedEmptyBoard` arms/disarms that one-shot.
+    if (reason === 'poll' && lastEntriesSyncTs != null && (entries.length > 0 || selfHealedEmptyBoard)) {
       changed = await cloudReconcileDelta();          // merges deltas into `entries`
       if (changed == null) { await loadFromCloud(true); changed = entries; }  // no baseline → full
+    } else if (reason === 'poll' && lastEntriesSyncTs != null) {
+      await loadFromCloud(true);   // one-time self-heal for this empty stretch
+      changed = entries;
+      selfHealedEmptyBoard = true;
     } else {
       await loadFromCloud(true);   // silent — no "Syncing…" banner; replaces `entries`
       changed = entries;
     }
+    if (entries.length > 0) selfHealedEmptyBoard = false;  // re-arm for the next wipe
     if (!changed.length) return;   // idle: nothing changed → skip repaint & print
     refreshActiveViews();
     // Only the print station prints, and only if we had a prior snapshot (guards
