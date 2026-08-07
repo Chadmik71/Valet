@@ -34,3 +34,42 @@ prompted by the customer bandwidth question. Findings:
 intact — no code-level regression as of this date. This is a point-in-time review,
 not a guarantee against future changes; re-audit if a future daily egress reading
 comes back unexpectedly high.
+
+## 2026-08-08: found and fixed the actual leak (correction to the 08-07 audit above)
+
+The 08-07 static-code audit above checked the *intended* code paths and looked clean —
+but missed a live behavioral bug. Per-project dashboard reading for chatswood-valet
+showed **7 Aug egress = 403.38 MB**, ~100% of it `PostgREST` (direct table reads, not
+Realtime/Functions/Auth) — almost the full daily budget in one day.
+
+Cross-checked against the Supabase API logs (`get_logs`, service `api`): a full
+`entries` select (`select=*&order=time_in.desc&limit=2000`) plus full `app_settings`
+select plus a `staff-auth` list call were firing **together, every ~8 seconds**,
+continuously, all day.
+
+Root cause: `reconcileFromCloud`'s "at most once per 8s" guard (index_v2.html:14239)
+only throttles how *often* it runs — it doesn't distinguish reason. Only `poll`
+(the 60s timer) took the cheap incremental-delta path; every other reason
+(`reconnect`, `focus`, `visible`) always ran the expensive full `loadFromCloud()`
+(entries + app_settings + staff). That's fine if reconnect/focus events are rare —
+but if the realtime socket is flapping (bad wifi, laptop sleep/wake, a proxy
+killing idle websockets), each `reconnect` event re-triggers a full reload, capped
+only by the 8s floor — turning the "rare safety net" into a steady drip of full
+table dumps, 24/7.
+
+Fix (commit `43d8b3d`): full reconciles now have their own 60s cooldown
+(`lastFullReconcileAt` / `FULL_RECONCILE_MIN_GAP_MS`), independent of the 8s poll
+guard. Once a full reload has run, subsequent non-poll triggers fall back to the
+cheap delta path until the cooldown clears — so a flapping socket degrades to
+"delta every 8s" (near-zero egress) instead of "full table dump every 8s".
+
+Underlying question not yet answered: *why* was the realtime socket reconnecting
+that often on 7 Aug? Tenant-level Realtime logs looked stable (no tenant
+restarts in the relevant window), so the flapping is more likely client-side
+(network/device) than a Supabase-side issue. The 60s cooldown bounds the damage
+either way, but if a future egress reading is still high, check whether the
+realtime channel is genuinely unstable (dropped connections in the browser
+console) rather than assuming this fix alone explains everything.
+
+**Next check:** re-read chatswood-valet's per-project daily egress in a day or two
+to confirm 8 Aug onward drops back to a small number.
