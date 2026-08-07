@@ -14210,6 +14210,18 @@ function scheduleRealtimeReconnect() {
 // event (dropped socket, backgrounded phone). Reuses loadFromCloud but suppresses
 // the banner, and throttles so a burst of focus/visibility events can't hammer it.
 let lastReconcileAt = 0;
+// Separate, longer cooldown for the EXPENSIVE full reload (entries + settings +
+// staff) that non-'poll' reasons (reconnect/focus/visible) trigger. A flapping
+// realtime socket (bad wifi, sleeping laptop, corporate proxy killing idle
+// websockets) can call reconcileFromCloud('reconnect') far faster than the 8s
+// guard above — that guard only caps how OFTEN reconcileFromCloud runs at all,
+// not which path it takes, so a flapping socket turned into a full table dump
+// every 8s, all day (~400MB/day — see BANDWIDTH_LOG.md 2026-08-08). Once a full
+// reload has run, subsequent non-poll triggers fall back to the cheap delta
+// until this cooldown clears; the next genuine reconnect/focus after that still
+// gets the full safety net (catches deletes/settings changes the delta can't).
+let lastFullReconcileAt = 0;
+const FULL_RECONCILE_MIN_GAP_MS = 60000;
 // High-water mark: the newest `updated_at` we've pulled from the cloud. The
 // routine 60s poll uses this to fetch ONLY rows that changed since, instead of
 // re-downloading the whole table every minute (which burned ~15 GB/mo of egress
@@ -14244,9 +14256,11 @@ async function reconcileFromCloud(reason) {
     // the cheap INCREMENTAL path: fetch only rows whose updated_at advanced past
     // our high-water mark (an empty, near-zero-byte response when nothing has
     // changed). Every OTHER trigger — realtime reconnect, tab focus/visibility —
-    // is infrequent and stays a FULL reconcile, which also catches row DELETES
-    // and settings/staff changes the delta can't see. This removes the egress
-    // hog while preserving all the old safety-net behaviour.
+    // normally stays a FULL reconcile, which also catches row DELETES and
+    // settings/staff changes the delta can't see — UNLESS one already ran within
+    // FULL_RECONCILE_MIN_GAP_MS, in which case it also falls back to the cheap
+    // delta (see lastFullReconcileAt above: a flapping socket must not turn into
+    // a full table dump every few seconds).
     let changed;
     // SELF-HEAL a wiped board: an empty `entries` at poll time is abnormal for a
     // running station and almost always means a prior blocked read wiped it. The
@@ -14261,13 +14275,21 @@ async function reconcileFromCloud(reason) {
     // need for the full pull. `selfHealedEmptyBoard` arms/disarms that one-shot.
     if (reason === 'poll' && lastEntriesSyncTs != null && (entries.length > 0 || selfHealedEmptyBoard)) {
       changed = await cloudReconcileDelta();          // merges deltas into `entries`
-      if (changed == null) { await loadFromCloud(true); changed = entries; }  // no baseline → full
+      if (changed == null) { await loadFromCloud(true); lastFullReconcileAt = now; changed = entries; }  // no baseline → full
     } else if (reason === 'poll' && lastEntriesSyncTs != null) {
       await loadFromCloud(true);   // one-time self-heal for this empty stretch
+      lastFullReconcileAt = now;
       changed = entries;
       selfHealedEmptyBoard = true;
+    } else if (reason !== 'poll' && lastEntriesSyncTs != null && now - lastFullReconcileAt < FULL_RECONCILE_MIN_GAP_MS) {
+      // A recent full reload already happened — a flapping socket or a burst of
+      // focus/visibility events shouldn't each re-download the whole table.
+      // Take the cheap delta path instead; still picks up new/changed entries.
+      changed = await cloudReconcileDelta();
+      if (changed == null) { await loadFromCloud(true); lastFullReconcileAt = now; changed = entries; }
     } else {
       await loadFromCloud(true);   // silent — no "Syncing…" banner; replaces `entries`
+      lastFullReconcileAt = now;
       changed = entries;
     }
     if (entries.length > 0) selfHealedEmptyBoard = false;  // re-arm for the next wipe
