@@ -74,6 +74,26 @@ console) rather than assuming this fix alone explains everything.
 **Next check:** re-read chatswood-valet's per-project daily egress in a day or two
 to confirm 8 Aug onward drops back to a small number.
 
+## 2026-08-09: 8 Aug closed out healthy — ~204.8MB, ~57% below 7 Aug
+
+Per-project dashboard, chatswood-valet filter, "Egress per day" chart — both 7 Aug and
+8 Aug are now closed/finalized buckets:
+
+- **7 Aug 2026 (closed):** 484.27MB total — 484.071MB PostgREST (100.0%), 123.626KB
+  Functions, 54.149KB Auth, 18.305KB Realtime. Note: this finalized figure is higher
+  than the 403.38MB read on 08-08 morning (mid-day figures apparently still update
+  after the fact as the day's data settles) — treat 08-08's in-progress readings as
+  provisional, the day-after closed number as the real one.
+- **8 Aug 2026 (closed):** ~204.76MB total — 204.54MB PostgREST (99.9%), 92.591KB
+  Auth, 60.688KB Realtime, 60.33KB Functions. ~57% below 7 Aug's closed total, and
+  in line with the evening-of projection (~100-120MB extrapolated, actual came in a
+  bit higher but still well within budget). No sign of the flapping-reload pattern
+  recurring — fix from commit `43d8b3d` holding.
+- **Cumulative this cycle (06 Aug – 06 Sep, chatswood-valet only):** 0.722 GB / 250 GB
+  (<1%).
+- 9 Aug (today) doesn't have its own bar yet — chart hadn't populated a partial-day
+  figure for it at check time.
+
 ## 2026-08-08 (mid-morning): fix confirmed — 8 Aug running at ~15MB vs 403MB on 7 Aug
 
 Checked the per-project dashboard again partway through the day (8 Aug bucket still
