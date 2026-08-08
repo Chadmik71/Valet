@@ -73,3 +73,13 @@ console) rather than assuming this fix alone explains everything.
 
 **Next check:** re-read chatswood-valet's per-project daily egress in a day or two
 to confirm 8 Aug onward drops back to a small number.
+
+## 2026-08-08 (mid-morning): fix confirmed — 8 Aug running at ~15MB vs 403MB on 7 Aug
+
+Checked the per-project dashboard again partway through the day (8 Aug bucket still
+in progress, not yet closed): **~15.1MB total so far** — 15.092MB PostgREST,
+12.89KB Auth, 9.05KB Functions, 5.79KB Realtime. That's a ~96% drop from 7 Aug's
+403.38MB, and for a partial day. No sign of the full-reload-every-8s pattern
+recurring. A cloud routine is still scheduled for 2026-08-09 12:00pm Sydney to
+double-check the full closed 8 Aug bucket and the API-log pattern directly, but
+this reading already strongly confirms commit `43d8b3d` fixed the leak.
