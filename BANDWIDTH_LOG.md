@@ -83,3 +83,15 @@ in progress, not yet closed): **~15.1MB total so far** — 15.092MB PostgREST,
 recurring. A cloud routine is still scheduled for 2026-08-09 12:00pm Sydney to
 double-check the full closed 8 Aug bucket and the API-log pattern directly, but
 this reading already strongly confirms commit `43d8b3d` fixed the leak.
+
+## 2026-08-08 (evening, ~6:10pm Sydney / 8hrs into the UTC day): still tracking linear, healthy
+
+**~78.1MB total so far** — 78.009MB PostgREST, 64.45KB Auth, 52.02KB Realtime,
+28.31KB Functions. Progression through the day: ~15.1MB at ~2hrs in, ~78.1MB at
+~8hrs in — roughly 9-10MB/hour, holding steady (linear, not accelerating).
+Projected across a full ~10-12hr business day that's ~100-120MB total, about a
+quarter of 7 Aug's 403MB disaster and comfortably within budget. API log
+cross-check was unavailable this time (Supabase `get_logs` timing out — project
+itself reports `ACTIVE_HEALTHY`), but the steady linear rate is itself the
+reassuring signal; a recurrence of the flapping-reload bug would show
+exponential growth, not this.
