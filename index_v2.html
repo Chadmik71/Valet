@@ -4448,9 +4448,23 @@ function dismissSaveToast() {
     }, err);
   }
 
-  function zebraPrint(zpl, friendlyAction, onDone) {
+  // isRetry (internal) — set on the automatic retry attempt so we don't loop.
+  function zebraPrint(zpl, friendlyAction, onDone, isRetry) {
     var name = (settings.printerZebraName || '').trim();
     function onErr(e) {
+      // A "can't connect" / timeout on the FIRST attempt of a session is often
+      // just this exact request racing the local agent's listener / Chrome's
+      // Local Network Access permission — reported 2026-08-09: the warm-up
+      // ping (below) already having run and Browser Print already open didn't
+      // stop the day's first auto-print from silently failing, yet a manual
+      // press moments later worked immediately. That pattern — first request
+      // fails, very next one succeeds — is exactly a one-off race, not the
+      // agent being genuinely unavailable. So retry automatically once before
+      // bothering staff with an error; only a SECOND failure is treated as real.
+      if (!isRetry && (e === 'connect' || e === 'timeout')) {
+        setTimeout(function () { zebraPrint(zpl, friendlyAction, onDone, true); }, 1200);
+        return;
+      }
       if (e === 'connect' || e === 'timeout') {
         flashScanStatus('Zebra Browser Print isn\'t running — open the Zebra Browser Print app on this desktop (and power on the printer), then try again', 'error');
       } else if (e === 'noname') {
