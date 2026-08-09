@@ -1,0 +1,190 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fix Log</title>
+<style>
+  @page { margin: 20mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Arial, sans-serif;
+    color: #241012;
+    margin: 0;
+    padding: 0;
+    line-height: 1.5;
+    font-size: 13px;
+  }
+  .header {
+    border-bottom: 3px solid #531620;
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+  }
+  .header h1 {
+    color: #531620;
+    font-size: 24px;
+    margin: 0 0 4px 0;
+  }
+  .header .sub {
+    color: #6b6b6b;
+    font-size: 13px;
+  }
+  .card {
+    border: 1px solid #e2d9da;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    page-break-inside: avoid;
+  }
+  .card .date {
+    display: inline-block;
+    background: #531620;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-bottom: 8px;
+  }
+  .card h2 {
+    color: #241012;
+    font-size: 15px;
+    margin: 0 0 10px 0;
+  }
+  .row {
+    margin-bottom: 8px;
+  }
+  .row .label {
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 2px;
+  }
+  .label.asked { color: #5a5a5a; }
+  .label.result { color: #2a7a4a; }
+  .row .body {
+    color: #333;
+  }
+  .tag {
+    display: inline-block;
+    background: #e9f5ee;
+    color: #2a7a4a;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 9px;
+    border-radius: 5px;
+    margin-left: 6px;
+  }
+  .footer {
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid #e2d9da;
+    font-size: 11px;
+    color: #888;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Fix Log</h1>
+    <div class="sub">Chatswood Chase Valet App &mdash; Everything asked and fixed, in plain English</div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Checked how much internet data the app is using <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Check how much internet data ("bandwidth") the app used since yesterday.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found</div>
+      <div class="body">Yesterday (8 August) the app used about 205 MB &mdash; more than half less than the 484 MB used the day before. For the whole month so far, the app has used less than 1% of the internet data we're allowed. Everything is healthy.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Checked if more customers would slow things down or cost more data <span class="tag">Fixed</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">If we get 10,000 customers, or 100 people a day using the hands-free shopping service with photos, will that use a lot more internet data?</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found and fixed</div>
+      <div class="body">More customers alone is fine &mdash; that part was already built well. But photos (of shopping bags or cars) were being saved in a way that made each record much bigger than normal &mdash; like putting a full photo inside a text message instead of sending a link to it. If we start taking lots of photos every day, this would have slowly used up a lot more internet data. We fixed it: photos are now stored in their own separate place, and the record just keeps a small link to it. This keeps things fast and cheap no matter how many photos we take.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Fixed old reports possibly missing information <span class="tag">Fixed</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Fix the issue where reports for older dates might not show everything.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found and fixed</div>
+      <div class="body">The app only keeps the most recent 2,000 cars ready to use on each device — older ones get quietly dropped to make room. If someone downloaded a report for an older date after we passed 2,000 total cars, it could have shown incomplete numbers with no warning. We fixed it: reports now double check they have everything for the dates you ask for, and if something's missing, they go get it before building the report. Nothing changed about how fast the everyday app feels.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Made a simple summary of the day's fixes <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Show the day's fixes as a PDF, written in plain English.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we did</div>
+      <div class="body">Made a one-page PDF called "What We Fixed Today" explaining the two fixes above in simple words, and saved it in the app's folder.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Set up this Fix Log <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Keep one file that records everything asked, so it's easy to check what's already been asked or fixed.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we did</div>
+      <div class="body">Created this Fix Log. From now on, every time something is fixed or added, a new entry is added here automatically &mdash; no need to ask.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Made this Fix Log easy to read as a PDF <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Turn this Fix Log into a PDF too, in plain English.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we did</div>
+      <div class="body">Made this PDF (the one you're reading). It has the same information as the Fix Log file, just written in simple words. A fresh copy gets made every time something new is added.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Fixed the printer not working for the first customer of the day <span class="tag">Fixed</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">On the first customer check-in of the day, the key tag didn't print by itself — had to press the print button by hand. Felt like "the printer was cold".</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found and fixed</div>
+      <div class="body">This exact problem happened before with a different printer type (Zebra), and was already fixed for that one — but the same fix was never added for your printer (BIXOLON). The very first connection to the printer each day needs a moment to "wake up" and get permission from the browser, and sometimes the first print job was sent before that was ready, so it silently failed. We added the same wake-up step for your printer too: the app now quietly checks the printer connection is ready in the background, before the first real print job needs it. No more manual button press needed.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    This file updates automatically every time something new is fixed or added. Ask for an updated PDF any time you want a fresh copy.
+  </div>
+
+</body>
+</html>
