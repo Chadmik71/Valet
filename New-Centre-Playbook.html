@@ -1,0 +1,213 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>New Centre Playbook</title>
+<style>
+  @page { margin: 20mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Arial, sans-serif;
+    color: #241012;
+    margin: 0;
+    padding: 0;
+    line-height: 1.55;
+    font-size: 13px;
+  }
+  .header {
+    border-bottom: 3px solid #531620;
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+  }
+  .header h1 {
+    color: #531620;
+    font-size: 23px;
+    margin: 0 0 4px 0;
+  }
+  .header .sub {
+    color: #6b6b6b;
+    font-size: 13px;
+  }
+  .intro {
+    background: #faf6f2;
+    border: 1px solid #e2d9da;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    color: #333;
+  }
+  .phase {
+    border: 1px solid #e2d9da;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    page-break-inside: avoid;
+  }
+  .phase .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #531620;
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    flex: none;
+    margin-right: 8px;
+  }
+  .phase h2 {
+    color: #241012;
+    font-size: 15px;
+    margin: 0 0 4px 0;
+    display: flex;
+    align-items: center;
+  }
+  .phase .who {
+    display: inline-block;
+    background: #e9f5ee;
+    color: #2a7a4a;
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 5px;
+    margin-left: 30px;
+    margin-bottom: 8px;
+  }
+  .phase ul {
+    margin: 8px 0 4px 30px;
+    padding: 0;
+  }
+  .phase li {
+    margin-bottom: 5px;
+    color: #333;
+  }
+  .note {
+    background: #fbf1e0;
+    border-left: 3px solid #a8720a;
+    padding: 8px 12px;
+    margin: 10px 0 4px 30px;
+    font-size: 12px;
+    color: #6b4d05;
+    border-radius: 0 6px 6px 0;
+  }
+  .footer {
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid #e2d9da;
+    font-size: 11px;
+    color: #888;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>New Centre Playbook</h1>
+    <div class="sub">What to do when a shopping centre wants to buy and use the Valet App &mdash; step by step</div>
+  </div>
+
+  <div class="intro">
+    Each centre gets its own separate, private copy of the app and its own private database &mdash;
+    nothing is shared between centres. This keeps every centre's cars, customers and money
+    completely separate and safe. It also means every new centre needs its own proper setup,
+    covered in the phases below.
+  </div>
+
+  <div class="phase">
+    <h2><span class="num">1</span> Before you say yes &mdash; get the details</h2>
+    <div class="who">Sales conversation</div>
+    <ul>
+      <li>Show them the app working &mdash; use the demo materials already made (the pitch report and demo run-sheet).</li>
+      <li>Find out what they need: how many bays/cars, do they want card payments (Square), text messages to customers, car photo ID, hands-free shopping, car wash service.</li>
+      <li>Get their centre details: name, address, phone number, logo files, and their parking price structure (how much per hour/tier, any free period, daily max).</li>
+      <li>Find out if they already have hardware (an iPad/PC for the counter, a receipt/key-tag printer) or need to buy some.</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h2><span class="num">2</span> Agree the business terms</h2>
+    <div class="who">You + business partner</div>
+    <ul>
+      <li>Decide how they pay: one-off setup fee, an ongoing monthly fee, a cut of revenue, or a mix &mdash; whatever you two agree makes sense for this deal.</li>
+      <li>Decide what's included: the software, the setup work, staff training, and ongoing support &mdash; write down what's in and what costs extra.</li>
+      <li>Put it in a written agreement (even simple) covering: what they're paying for, who owns the software (you do &mdash; they're licensed to use it, not buy the code), what happens to their data if they ever stop using it, and how support/fixes work.</li>
+      <li><i>Worth getting a lawyer to check the agreement wording once you have a template &mdash; not something to guess on.</i></li>
+      <li>Get it signed before starting the technical setup below (real work, so get the commitment first).</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h2><span class="num">3</span> Set up their own separate system</h2>
+    <div class="who">Technical setup</div>
+    <ul>
+      <li>Copy the app's code into a new, separate online location (a new website address just for them).</li>
+      <li>Create their own separate private database (completely separate from Chatswood Chase's and any other centre's).</li>
+      <li>Set up the messaging/payment connections they asked for in Phase 1 (text messages, card payments, etc.) &mdash; each needs its own account/login for their centre.</li>
+      <li>Replace the logo and icons with their branding.</li>
+      <li>Enter their centre's name, address, phone, and pricing into the one settings area that controls the whole app.</li>
+    </ul>
+    <div class="note">There's already a full technical checklist for this exact process (<b>CLONE-NEW-CENTRE.md</b> in the app's files) &mdash; follow that step by step when you get to this phase.</div>
+  </div>
+
+  <div class="phase">
+    <h2><span class="num">4</span> Set up hardware and accounts</h2>
+    <div class="who">You / their team</div>
+    <ul>
+      <li>Get their counter device (iPad/tablet/PC) and key-tag printer set up and connected.</li>
+      <li>If they're using card payments: pair their card machine to the device.</li>
+      <li>Create logins for each of their staff members.</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h2><span class="num">5</span> Train their staff</h2>
+    <div class="who">You / whoever runs training</div>
+    <ul>
+      <li>Walk them through: checking a car in, marking damage, checking a car out, handling a lost ticket, and (if they use it) hands-free shopping and car wash.</li>
+      <li>There's already a ready-made staff training guide (<b>deck-staff-training.md</b>) &mdash; reuse it, just swap in their centre's name and screenshots.</li>
+      <li>Do a hands-on practice run with real (test) cars before going live.</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h2><span class="num">6</span> Test everything before go-live</h2>
+    <div class="who">You, before handing over</div>
+    <ul>
+      <li>Check the app loads with the right name and logo.</li>
+      <li>Check a test car in &mdash; confirm the text message and printed key tag both show the new centre's name.</li>
+      <li>Check a test car out &mdash; confirm the parking fee matches their pricing.</li>
+      <li>Open a report &mdash; confirm it shows their centre's name and details.</li>
+      <li>Double check the test data landed in <b>their</b> database, not anyone else's.</li>
+      <li>Test anything extra they're using: card payment, photo car ID, pickup notifications.</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h2><span class="num">7</span> Go live</h2>
+    <div class="who">Launch day</div>
+    <ul>
+      <li>Pick a start date and make sure their staff know it.</li>
+      <li>Watch the first few days closely &mdash; check in on them, ask if anything's confusing or broken.</li>
+      <li>Fix anything that comes up quickly &mdash; a smooth first week builds trust.</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h2><span class="num">8</span> After they're live &mdash; ongoing</h2>
+    <div class="who">You + business partner, ongoing</div>
+    <ul>
+      <li>Be their point of contact for problems and questions.</li>
+      <li>Send them a usage/performance report now and then (the app can already generate this).</li>
+      <li>Bill them per your agreement from Phase 2.</li>
+    </ul>
+    <div class="note">Important: because every centre is a <b>separate copy</b> of the app, a fix or improvement made for one centre does <b>not</b> automatically reach the others &mdash; it has to be copied across to each centre's copy by hand. Keep a list of every centre running the app so nothing gets missed when you make a fix.</div>
+  </div>
+
+  <div class="footer">
+    This is a working checklist &mdash; adjust it as you learn from each new centre. Ask for an updated copy any time the process changes.
+  </div>
+
+</body>
+</html>
