@@ -4324,6 +4324,27 @@ function dismissSaveToast() {
     cutPaper(1);
     sendJob(name, 'Test tag sent — check the printer');
   };
+
+  // Silently warm the WebPrint bridge connection so the day's first real
+  // print isn't a cold start. Same underlying cause as the Zebra path below
+  // (a fresh page load hasn't reached 127.0.0.1 yet, so Chrome's Local
+  // Network Access permission is un-primed and the first request can
+  // race/fail) — this was previously assumed to be a Zebra-only problem, but
+  // it applies to any page-to-localhost print bridge, BIXOLON's WebPrintSDK
+  // included. A lightweight GET to /checkStatus (read-only, doesn't submit a
+  // job) is enough to prime the connection ahead of the real print. Best-
+  // effort only — no toast, no error surfaced, response ignored.
+  window._warmBixolonConn = function () {
+    try {
+      var name = (settings.printerName || '').trim();
+      if (!name) return;
+      applyTransportFromSettings();
+      var x = new XMLHttpRequest();
+      x.open('GET', getServerURL() + name + '/checkStatus', true);
+      x.onreadystatechange = function () {};
+      x.send();
+    } catch (e) {}
+  };
 })();
 
 // ═══════════════════════════════════════════════════
@@ -4516,13 +4537,12 @@ window.printTestTag = function () {
 };
 // Pre-warm the local print-agent connection ahead of the first real print, so a
 // fresh-session cold start doesn't silently drop the day's first auto-printed
-// tag. Only meaningful for the Zebra desktop agent (the BIXOLON Android bridge
-// path doesn't use this cached-base scheme), and only worth doing on the print
-// station itself. Safe to call often — it's just a GET to localhost.
+// tag — for whichever printer type is configured. Only worth doing on the
+// print station itself. Safe to call often — it's just a GET to localhost.
 window.warmPrinter = function () {
-  if (settings.printStation && settings.printerType === 'zebra' && window._warmZebraConn) {
-    window._warmZebraConn();
-  }
+  if (!settings.printStation) return;
+  if (settings.printerType === 'zebra' && window._warmZebraConn) window._warmZebraConn();
+  else if (settings.printerType === 'bixolon' && window._warmBixolonConn) window._warmBixolonConn();
 };
 
 // Lightweight transient toast (reuses the save-toast styling/element)
