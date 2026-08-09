@@ -9102,8 +9102,20 @@ function relDayLabel(dt) {
   return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
 }
 
+function logSearchMatch(e, search) {
+  return e.ticket.toLowerCase().includes(search) ||
+    e.rego.toLowerCase().includes(search) ||
+    e.brand.toLowerCase().includes(search) ||
+    (e.model || '').toLowerCase().includes(search) ||
+    (e.name || '').toLowerCase().includes(search) ||
+    (e.bay || '').toLowerCase().includes(search) ||
+    (e.attendantIn || '').toLowerCase().includes(search);
+}
+
 // Shared Full-Log filter (date range + search) so the table and the CSV export
-// always reflect the same set.
+// always reflect the same set. Local-array only (instant) — the live table
+// view; exportCSV(true) additionally reaches to the cloud for ranges that go
+// back further than what's held locally.
 function getLogFiltered() {
   const fromDate = document.getElementById('log-date-from').value;
   const toDate = document.getElementById('log-date-to').value;
@@ -9117,17 +9129,7 @@ function getLogFiltered() {
       return true;
     });
   }
-  if (search) {
-    filtered = filtered.filter(e =>
-      e.ticket.toLowerCase().includes(search) ||
-      e.rego.toLowerCase().includes(search) ||
-      e.brand.toLowerCase().includes(search) ||
-      (e.model || '').toLowerCase().includes(search) ||
-      (e.name || '').toLowerCase().includes(search) ||
-      (e.bay || '').toLowerCase().includes(search) ||
-      (e.attendantIn || '').toLowerCase().includes(search)
-    );
-  }
+  if (search) filtered = filtered.filter(e => logSearchMatch(e, search));
   return filtered;
 }
 
@@ -9234,7 +9236,7 @@ function clearLogFilters() {
 // ═══════════════════════════════════════════════════
 // REPORTS RENDER
 // ═══════════════════════════════════════════════════
-function setReportRange(range) {
+async function setReportRange(range) {
   const today = new Date();
   const to = fmtDateISO(today);
   let from;
@@ -9251,17 +9253,23 @@ function setReportRange(range) {
       const oldest = entries.reduce((a,e) => e.timeIn < a ? e.timeIn : a, entries[0].timeIn);
       from = localDateStr(oldest);
     }
+    // Local coverage is capped (see oldestLocalTimeIn) — ask Supabase for the
+    // true earliest entry so "All" doesn't silently truncate once the table
+    // grows past the live-sync window.
+    if (!DEMO_MODE && supa) {
+      try {
+        const { data, error } = await supa.from('entries').select('time_in').order('time_in', { ascending: true }).limit(1);
+        if (!error && data && data.length) from = localDateStr(data[0].time_in);
+      } catch (_) { /* keep the local-derived from on failure */ }
+    }
   }
   document.getElementById('report-from').value = from;
   document.getElementById('report-to').value = to;
   renderReports();
 }
 
-// Aggregate the entries in the current report date range for downloads.
-function reportData() {
-  const from = document.getElementById('report-from').value;
-  const to = document.getElementById('report-to').value;
-  const list = entries.filter(e => { const d = localDateStr(e.timeIn); return d >= from && d <= to; });
+// Shared aggregation for a pre-filtered list of entries over [from, to].
+function aggregateReportData(list, from, to) {
   const completed = list.filter(e => e.timeOut);
   const revenue = completed.reduce((s, e) => s + (e.totalFee || 0), 0);
   const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
@@ -9281,9 +9289,19 @@ function reportData() {
     avgStayMs: ins.avgStay, medStayMs: ins.medStay };
 }
 
+// Aggregate the entries for the current report date range, reaching out to
+// Supabase for the true range when it goes back further than what's held
+// locally (see entriesForRange). Used by the download/export actions.
+async function reportDataAsync() {
+  const from = document.getElementById('report-from').value;
+  const to = document.getElementById('report-to').value;
+  const list = await entriesForRange(from, to);
+  return aggregateReportData(list, from, to);
+}
+
 // Download the current report as a CSV (opens in Excel / Google Sheets).
-function downloadReportSpreadsheet() {
-  const r = reportData();
+async function downloadReportSpreadsheet() {
+  const r = await reportDataAsync();
   if (!r.list.length) { alert('No data in this date range to download.'); return; }
   const L = [];
   const row = (...c) => L.push(c.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','));
@@ -9317,8 +9335,8 @@ function downloadReportSpreadsheet() {
 }
 
 // Open a print-ready report; the browser's print dialog can Save as PDF.
-function downloadReportPDF() {
-  const r = reportData();
+async function downloadReportPDF() {
+  const r = await reportDataAsync();
   if (!r.list.length) { alert('No data in this date range to download.'); return; }
   const tbl = (head, rows) => `<table><thead><tr>${head.map(h => `<th${h !== head[0] ? ' style="text-align:right"' : ''}>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
   const dailyRows = r.daily.map(d => `<tr><td>${fmtDate(new Date(d[0]))}</td><td style="text-align:right">${d[1]}</td><td style="text-align:right">${fmtMoney(d[2])}</td></tr>`).join('');
@@ -9905,16 +9923,25 @@ async function renderMonthlyReport() {
   if (!el) return;
   el.innerHTML = '<div class="empty">Loading weather &amp; holidays…</div>';
 
+  // Reaches to the cloud for entries (see entriesForRange) alongside weather/
+  // holidays when this month goes back further than what's held locally —
+  // otherwise instant, local-array only.
+  const monthStart = ym + '-01';
+  const monthEnd = fmtDateISO(new Date(y, m, 0));
+  const [monthEntries, wx, ph] = await Promise.all([
+    entriesForRange(monthStart, monthEnd),
+    fetchMonthWeather(ym),
+    fetchPublicHolidays(y),
+  ]);
+  if (inp.value !== ym) return; // user switched months while awaiting
+
   // Per-day car counts + revenue (same day-key convention as Daily Volume).
   const counts = {}, rev = {};
-  entries.forEach(e => {
+  monthEntries.forEach(e => {
     if (!e.timeIn) return;
     const d = localDateStr(e.timeIn);   // Sydney-local day, matching Log/Dashboard (timeIn is UTC ISO)
     if (d.slice(0, 7) === ym) { counts[d] = (counts[d] || 0) + 1; rev[d] = (rev[d] || 0) + (e.totalFee || 0); }
   });
-
-  const [wx, ph] = await Promise.all([fetchMonthWeather(ym), fetchPublicHolidays(y)]);
-  if (inp.value !== ym) return; // user switched months while awaiting
 
   const days = new Date(y, m, 0).getDate();
   const todayISOv = isoToday();
@@ -11344,9 +11371,24 @@ function updatePrinterTypeUI() {
 // EXPORT / IMPORT
 // ═══════════════════════════════════════════════════
 // useFilter=true exports only the rows matching the Full Log's date range &
-// search (e.g. "This Month"); otherwise the whole log.
-function exportCSV(useFilter) {
-  const data = useFilter ? getLogFiltered() : entries;
+// search (e.g. "This Month"); otherwise the whole log. When a date range is
+// set that reaches further back than what's held locally, reaches out to
+// Supabase for the true range (see entriesForRange) instead of silently
+// exporting a truncated result.
+async function exportCSV(useFilter) {
+  let data;
+  if (useFilter) {
+    const fromDate = document.getElementById('log-date-from').value;
+    const toDate = document.getElementById('log-date-to').value;
+    const search = document.getElementById('log-search').value.trim().toLowerCase();
+    let filtered = (fromDate || toDate)
+      ? await entriesForRange(fromDate || '2000-01-01', toDate || fmtDateISO(new Date()))
+      : [...entries];
+    if (search) filtered = filtered.filter(e => logSearchMatch(e, search));
+    data = filtered;
+  } else {
+    data = entries;
+  }
   if (data.length === 0) { alert('No entries to export for this range.'); return; }
   const headers = ['Ticket','Date','Time In','Time Out','Duration (min)','Bay','Brand','Model','Colour','Rego','Customer Name','Phone','Attendant In','Attendant Out','Parking Fee','Valet Fee','Total Fee','Tip','Payment Status','Payment Method','Square Payment ID','Notes'];
   const rows = data.map(e => {
@@ -13954,6 +13996,64 @@ async function cloudReconcileDelta() {
   applied.forEach(ce => { if (!known.has(ce.id)) entries.push(ce); }); // append genuinely new rows
   if (!DEMO_MODE) localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   return applied;
+}
+
+// The exact boundary of what's guaranteed complete in the local (possibly-
+// truncated) `entries` array: full reloads (cloudLoadAllEntries, above) are
+// capped at the most recent 2000 rows, and each full reload REPLACES `entries`
+// wholesale (see loadFromCloud) rather than merging with older history. So
+// everything from now back to this oldest-held timeIn is complete; anything
+// older is silently absent once the table exceeds 2000 rows. Returns an ISO
+// timeIn string, or null when entries is empty.
+function oldestLocalTimeIn() {
+  if (!entries.length) return null;
+  return entries.reduce((a, e) => (e.timeIn < a ? e.timeIn : a), entries[0].timeIn);
+}
+
+// Fetch entries directly from Supabase for an arbitrary date range, paginated —
+// used only by explicit report/export actions when the requested range reaches
+// earlier than oldestLocalTimeIn(). The live desk views keep using the local,
+// capped `entries` array unchanged; this is strictly for on-demand historical
+// pulls so reports stay correct once the table grows past the live-sync window.
+async function fetchEntriesInRange(fromISO, toISO) {
+  if (DEMO_MODE || !supa) return [];
+  const out = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supa
+      .from('entries')
+      .select('*')
+      .gte('time_in', fromISO)
+      .lt('time_in', toISO)
+      .order('time_in', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const rows = (data || []).map(dbToJs);
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
+// Entries for a local-date range (inclusive "YYYY-MM-DD" strings, matching the
+// Reports/Log date pickers). Uses the local array when it already covers the
+// range (instant, no network); reaches out to Supabase only when the range
+// goes back further than oldestLocalTimeIn(). Falls back to the (possibly
+// incomplete) local array on any fetch error so reports still work offline.
+async function entriesForRange(fromDateStr, toDateStr) {
+  const oldest = oldestLocalTimeIn();
+  const localCovers = oldest == null || fromDateStr >= localDateStr(oldest);
+  if (localCovers) {
+    return entries.filter(e => { const d = localDateStr(e.timeIn); return d >= fromDateStr && d <= toDateStr; });
+  }
+  try {
+    const fromISO = new Date(fromDateStr + 'T00:00:00').toISOString();
+    const toISO = new Date(new Date(toDateStr + 'T00:00:00').getTime() + 86400000).toISOString();
+    return mergeCloudWithPendingLocal(await fetchEntriesInRange(fromISO, toISO));
+  } catch (err) {
+    console.error('[entriesForRange] cloud fetch failed, falling back to local (possibly incomplete)', err.message || err);
+    return entries.filter(e => { const d = localDateStr(e.timeIn); return d >= fromDateStr && d <= toDateStr; });
+  }
 }
 
 // ─── Keep the Supabase auth session alive ───
