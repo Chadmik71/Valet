@@ -1,0 +1,16 @@
+# Fix / Change Log — Chatswood Chase Valet App
+
+A running record of everything asked of Claude to fix, add, or investigate in
+this repo — so it's easy to recognize "have I already asked for this?" or
+"was this already fixed?" without digging back through chat history.
+
+**Convention:** one row per request. Add a new row whenever a fix/change is
+completed — don't edit old rows except to update Status if something regresses.
+
+| Date | Asked | Issue found | Result / fix | Status | Ref |
+|---|---|---|---|---|---|
+| 2026-08-09 | Check bandwidth/egress since yesterday | Routine check, not a bug | 8 Aug closed at ~204.8MB (down 57% from 7 Aug's 484MB); cycle total 0.72GB / 250GB — healthy | ✅ Done | `BANDWIDTH_LOG.md`, commit `24dc6c4` |
+| 2026-08-09 | Will 10,000 customers / 100 handsfree-shopping-with-photos per day increase egress? | Full-reload sync is capped at the most recent 2,000 rows, so plain customer/entry count growth doesn't scale egress. But bag/car check-in photos were stored as base64 text directly inside each row (84–276KB vs ~1.1KB normal) — at ~100 photo jobs/day, that 2,000-row window would fill with heavy rows within ~3 weeks, turning routine refreshes into ~300-400MB pulls | Created `entry-photos` Supabase Storage bucket (public, unguessable paths). Photo capture (bag pickups + car check-in) now uploads there and stores just a short link in the row instead of the full photo. Falls back to the old inline method if offline. | ✅ Done | commit `cf10ed3` |
+| 2026-08-09 | Fix the report date-range issue too | Reports/CSV/PDF exports only ever read from the local array, which is silently replaced with just the most-recent-2,000-rows on every refresh. Once total entries pass 2,000, a report for an older date range would quietly come back incomplete — no error, just missing data. The "All Time" quick-range button had the same problem picking its start date. | Added `entriesForRange()` — reports/exports now check if the requested date range is already fully loaded; if not, they fetch the exact missing range straight from Supabase before building the report. Live desk views (dashboard, Full Log table) untouched — still instant. | ✅ Done | commit `e71f52e` |
+| 2026-08-09 | Show today's fixes as a PDF, plain language | N/A — deliverable request | Created `What-We-Fixed-Today.pdf`: plain-English writeup of the two fixes above (problem / risk if unfixed / how it was fixed) | ✅ Done | `What-We-Fixed-Today.pdf`, commit `f4567b8` |
+| 2026-08-09 | Keep one file recording every fix/add request, with date/issue/result, so it's easy to recognize repeat asks | N/A — process request | Created this file (`FIX_LOG.md`) | ✅ Done | this file |
