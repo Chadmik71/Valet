@@ -7224,6 +7224,12 @@ function assignBay(id) {
   if (v === null) return;            // cancelled — still waiting
   const bay = v.trim();
   if (!bay) return;                  // left blank — still waiting
+  // Same hard block as New Entry / Edit Car: a bay holds exactly one car.
+  const bayDup = bayOccupant(bay, e.id);
+  if (bayDup) {
+    alert(`Bay ${bay} is already taken by ${bayDup.rego || 'a car'} (ticket ${bayDup.ticket}).\n\nMark that car out, or choose a different bay.`);
+    return;
+  }
   e.bay = bay;
   saveData(e.id, { immediate: true });
   cloudAudit('edit', 'entry', e.id, { ticket: e.ticket, bay });
