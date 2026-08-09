@@ -75,6 +75,10 @@
     border-radius: 5px;
     margin-left: 6px;
   }
+  .tag.warn {
+    background: #fbf1e0;
+    color: #a8720a;
+  }
   .footer {
     margin-top: 20px;
     padding-top: 12px;
@@ -171,14 +175,27 @@
 
   <div class="card">
     <span class="date">9 August 2026</span>
-    <h2>Fixed the printer not working for the first customer of the day <span class="tag">Fixed</span></h2>
+    <h2>Tried to fix the printer not working for the first customer of the day <span class="tag warn">Corrected</span></h2>
     <div class="row">
       <div class="label asked">What was asked</div>
       <div class="body">On the first customer check-in of the day, the key tag didn't print by itself — had to press the print button by hand. Felt like "the printer was cold".</div>
     </div>
     <div class="row">
       <div class="label result">What we found and fixed</div>
-      <div class="body">This exact problem happened before with a different printer type (Zebra), and was already fixed for that one — but the same fix was never added for your printer (BIXOLON). The very first connection to the printer each day needs a moment to "wake up" and get permission from the browser, and sometimes the first print job was sent before that was ready, so it silently failed. We added the same wake-up step for your printer too: the app now quietly checks the printer connection is ready in the background, before the first real print job needs it. No more manual button press needed.</div>
+      <div class="body">First guess was the wrong printer — a fix was made assuming the BIXOLON printer, but it turned out the printer actually being used is the Zebra one. That fix was kept anyway (it's harmless, just wasn't the real answer) &mdash; see the next entry for the actual fix.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Fixed the printer not working for the first customer &mdash; for real this time (Zebra) <span class="tag">Fixed</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Correction: the printer that had the problem is the Zebra one, not BIXOLON.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found and fixed</div>
+      <div class="body">This same "cold start" problem had already been fixed for the Zebra printer once before, but it still happened again today. Checking with the user showed a clear pattern: the printer app was already open, and pressing print by hand worked straight away, first try. That tells us it wasn't the printer being switched off or the app not running &mdash; it was just the very first print request of the day having a one-off hiccup. So instead of trying to warm the printer up ahead of time (which clearly wasn't catching every case), the app now automatically tries again by itself, about a second later, if the very first print attempt fails &mdash; before showing any error to staff. Only if it fails twice in a row does it tell staff something's wrong. This should mean no more manual button presses for the first car of the day.</div>
     </div>
   </div>
 
