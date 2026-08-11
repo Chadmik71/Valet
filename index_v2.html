@@ -14038,6 +14038,42 @@ async function cloudReconcileDelta() {
   return applied;
 }
 
+// Lightweight substitute for a full loadFromCloud(): reuses cloudReconcileDelta()
+// for new/changed rows, then closes the one gap a delta can't see — deletes —
+// with a cheap id-only diff instead of re-downloading every column of every
+// row. Also refreshes settings/staff (tiny payloads). This is what the
+// focus/visibility/reconnect "safety net" now uses instead of a real full
+// select('*') — those triggers fire often enough (staff phones locking/
+// unlocking, tabs regaining focus) that the full 4MB+ table dump was the
+// actual driver of day-to-day egress, not any single bug. The true
+// loadFromCloud() is still used to establish the very first baseline (no
+// lastEntriesSyncTs yet) and for the empty-board self-heal, where a real
+// authoritative snapshot matters more than the byte cost.
+async function lightFullReconcile() {
+  const changed = await cloudReconcileDelta();
+  if (changed == null) return null;   // no baseline yet — caller falls back to a real full load
+  try {
+    const { data, error } = await supa.from('entries').select('id')
+      .order('time_in', { ascending: false }).limit(2000);
+    if (!error) {
+      const cloudIds = new Set((data || []).map(r => r.id));
+      const pendingUpsertIds = new Set(entriesSyncQueue);
+      pendingWrites.forEach(w => { if (w.op === 'upsert' && w.data && w.data.id) pendingUpsertIds.add(w.data.id); });
+      const before = entries.length;
+      entries = entries.filter(e => cloudIds.has(e.id) || pendingUpsertIds.has(e.id));
+      if (entries.length !== before && !DEMO_MODE) localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    }
+  } catch (e) { /* delete-diff is best-effort; a missed delete self-heals on the next full reconcile */ }
+  try {
+    const [freshSettings, staff] = await Promise.all([cloudLoadSettings(), cloudListStaff().catch(() => null)]);
+    cloudSettings = freshSettings;
+    if (staff) staffRoster = staff;
+    settings.prefix = cloudSettings.ticket_prefix || settings.prefix || 'A-';
+    if (cloudSettings.next_ticket_num !== undefined && cloudSettings.next_ticket_num !== null) settings.nextNum = cloudSettings.next_ticket_num;
+  } catch (e) { /* settings/staff refresh is best-effort here too */ }
+  return changed;
+}
+
 // The exact boundary of what's guaranteed complete in the local (possibly-
 // truncated) `entries` array: full reloads (cloudLoadAllEntries, above) are
 // capped at the most recent 2000 rows, and each full reload REPLACES `entries`
@@ -14463,8 +14499,17 @@ async function reconcileFromCloud(reason) {
       // Take the cheap delta path instead; still picks up new/changed entries.
       changed = await cloudReconcileDelta();
       if (changed == null) { await loadFromCloud(true); lastFullReconcileAt = now; changed = entries; }
+    } else if (lastEntriesSyncTs != null) {
+      // Routine focus/visibility/reconnect safety net, cooldown elapsed, and we
+      // already have a baseline — use the cheap delta+id-diff substitute instead
+      // of re-downloading the whole table (this used to be the dominant driver
+      // of day-to-day egress: these triggers fire often, and a real full
+      // select('*') here on every one of them adds up fast).
+      changed = await lightFullReconcile();
+      if (changed == null) { await loadFromCloud(true); changed = entries; }  // baseline vanished mid-flight → full
+      lastFullReconcileAt = now;
     } else {
-      await loadFromCloud(true);   // silent — no "Syncing…" banner; replaces `entries`
+      await loadFromCloud(true);   // very first load ever — no baseline yet, must be a real full pull
       lastFullReconcileAt = now;
       changed = entries;
     }
