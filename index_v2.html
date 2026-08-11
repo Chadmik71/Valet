@@ -15761,8 +15761,18 @@ function updateUserBadge() {
 // handy diagnostic: a device sitting open far longer than a normal shift is
 // worth a manual refresh, e.g. after a code deploy that a static host like
 // GitHub Pages can't push into an already-open tab.
+//
+// Admin-only: every logged-in device still calls .track() (see
+// startRealtimeSync) so admins get an accurate picture regardless of who's
+// connected — this just gates who's allowed to SEE the resulting badge.
 function updateOnlineStaffUI() {
   if (!realtimeChannel) return;
+  const badgeAllowed = currentUser && currentUser.role === 'admin';
+  if (!badgeAllowed) {
+    const existing = document.getElementById('online-staff-badge');
+    if (existing) existing.remove();
+    return;
+  }
   let entries;
   try {
     entries = Object.values(realtimeChannel.presenceState()).flat().filter(p => p && p.username);
