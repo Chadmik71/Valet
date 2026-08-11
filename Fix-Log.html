@@ -281,6 +281,84 @@
     </div>
   </div>
 
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Found and fixed why data use was still high, hours after the earlier fix <span class="tag">Fixed</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Today's data use still felt too high, especially since no staff were actively using the app.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found and fixed</div>
+      <div class="body">Checked the raw records directly and found the old, expensive way of re-downloading the whole car list was still happening every 1-3 minutes, hours after the fix went live. The reason: a website like this one doesn't automatically update a screen that's already open &mdash; only a fresh reload picks up the new version. So any screen (a desk computer, the print station, a phone) that was already open before the fix went live kept quietly running the old, expensive version. After asking for a hard refresh on the affected screen, checked again and confirmed the old expensive pattern had completely stopped.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Added a "who's online" indicator <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Can I have a feature showing how many staff are online at the same time?</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we did</div>
+      <div class="body">Added a small indicator in the top corner showing how many staff are currently connected. Tap it to see a list of every connected device and how long each one has been open &mdash; which is also handy for spotting a screen that's been sitting open too long and needs a refresh.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Made the "who's online" indicator admin-only <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Only admin-level staff should be able to see who's online.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we did</div>
+      <div class="body">Regular staff devices still quietly check in behind the scenes so the count stays accurate, but only admin accounts can actually see the indicator on screen.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Tracked down why "who's online" wasn't showing up at all <span class="tag">Fixed</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Still can't see how many staff are online, even after refreshing.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found and fixed</div>
+      <div class="body">Testing directly against the system (separate from the app itself) found two real, separate problems. First, a security setting meant to control who can use the app's "live updates" system had accidentally been left in its strictest state &mdash; blocking ALL live updates of this type for everyone, including the feature that lets one phone ask the print station to print a tag. Fixed that with a proper access rule. Second, even after that fix, the specific piece used for "who's online" still didn't work &mdash; traced to an old, outdated version of the underlying toolkit the app relies on, which had a genuine bug in that exact feature. Confirmed a newer version fixes it, tested it thoroughly against everything else the app depends on (accounts, saved data, photos, live updates) to make sure nothing else would break, then safely updated to the newer version.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Found a separate, unrelated login problem while testing <span class="tag warn">Found, not yet fixed</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">N/A &mdash; found while checking the fix above on a real device.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found</div>
+      <div class="body">One device showed a warning that the cloud returned no cars. The real cause: the behind-the-scenes list that lets a device quietly stay logged in for 24 hours without re-entering a PIN is currently completely empty &mdash; most likely from something unrelated that happened earlier. That device still looks logged in on screen, but can't actually talk to the cloud properly until it's logged in fresh. The fix is simple &mdash; log out and log back in with your PIN &mdash; but that step hasn't been done yet, so this is flagged as still open.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Checked internet data use again <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Check how much internet data the app has used today.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found</div>
+      <div class="body">About 197&nbsp;MB so far today &mdash; still under 1% of the monthly allowance. The rise since the last check earlier today is from the troubleshooting work itself (repeatedly pulling the full car list to test the problem above), not a new leak.</div>
+    </div>
+  </div>
+
   <div class="footer">
     This file updates automatically every time something new is fixed or added. Ask for an updated PDF any time you want a fresh copy.
   </div>
