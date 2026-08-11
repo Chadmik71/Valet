@@ -115,3 +115,75 @@ cross-check was unavailable this time (Supabase `get_logs` timing out — projec
 itself reports `ACTIVE_HEALTHY`), but the steady linear rate is itself the
 reassuring signal; a recurrence of the flapping-reload bug would show
 exponential growth, not this.
+
+## 2026-08-11: cumulative 1.197 GB / 250 GB (<1%) — 9 Aug bar higher than expected, still within budget
+
+Per-project dashboard, `chatswood-valet` filter, current billing cycle (06 Aug –
+06 Sep 2026):
+
+- **Cumulative egress this cycle (chatswood-valet only): 1.197 GB / 250 GB
+  (<1%).** No overage, nowhere close.
+- The "Egress per day" chart (visual read of the bar heights against the
+  143MB/286MB/484MB gridlines — no exact tooltip value this time, so these are
+  close estimates, not exact figures like earlier entries):
+  - 07 Aug (closed): ~484MB — matches the 08-09 log entry's finalized 484.27MB.
+  - 08 Aug (closed): ~205MB — matches the 08-09 log entry's finalized 204.76MB.
+  - 09 Aug (closed): **~350-380MB** — noticeably higher than 08 Aug, breaking
+    the "steady healthy" trend the 08-08 entries projected. Not investigated
+    further this check (still well within the 250GB budget), but worth a look
+    if it keeps climbing — could be legitimate higher usage (busier day) or an
+    early sign of the reconnect-flapping pattern from the 7 Aug incident
+    creeping back.
+  - 10 Aug (closed): small bar, roughly ~50-90MB.
+  - 11 Aug (today): not yet on the chart (too new / <24h to populate).
+- Org now has **4 projects** total (was 2 at the 2026-08-07 baseline check):
+  `chatswood-valet`, `Chadmik71's Project`, `Manly-clinic` (new), and
+  `scone-thai-massage`. All still pool from the same 250GB/month org quota, so
+  the org-total-vs-per-project gap is now wider than before — reinforces why
+  the per-project filter matters for this log.
+- **Action item:** next check should try to get the exact 09 Aug figure (hover
+  tooltip on the chart didn't render this pass) rather than relying on the
+  visual estimate above, given the accuracy bar for the customer pitch.
+
+## 2026-08-11 (follow-up): 9 Aug's spike investigated — exact figures + root-cause check
+
+Got the exact tooltip values for the two days flagged above, and dug into whether
+09 Aug's jump was a code regression:
+
+- **09 Aug (closed, exact): 384.9MB total** — 384.621MB PostgREST (99.9%),
+  95.604KB Auth, 85.749KB Realtime, 103.785KB Functions. Confirms the visual
+  estimate; ~88% above 08 Aug's 204.76MB.
+- **10 Aug (closed, exact): 60.16MB total** — 60.157MB PostgREST (100%),
+  8.722KB Auth, 4.819KB Realtime, 15.264KB Functions. The healthiest day yet —
+  well below even 08 Aug, so whatever drove the 09 Aug spike did **not**
+  persist into 10 Aug.
+- **Cumulative this cycle: 1.197–1.219 GB / 250 GB (<1%).** No budget concern.
+
+**Root-cause check:** 09 Aug is the same day two features shipped
+(`cf10ed3` photo→Storage migration and `e71f52e` historical
+reports/`entriesForRange`, both ~10:20–10:30am). Checked whether either
+reintroduced the July/Aug-7 "full table dump" pattern:
+- `entries` table is tiny (963 rows, ~4.1MB total, photo columns included) —
+  confirmed live via SQL. A single full-table pull is only ~4-5MB, so 384MB
+  in one day means roughly the equivalent of ~80-90 full pulls, not one
+  runaway query.
+- Audited every `setInterval` in `index_v2.html`: none of them call
+  `entriesForRange`/`fetchEntriesInRange` (the new historical-fetch path) —
+  `refreshActiveViewOnly()`'s 10s tick only calls `renderReports()`, which is
+  local-array-only per the `e71f52e` design. So the new report/export feature
+  can't have caused a *periodic* drain — it's click-driven only.
+- No code-level regression found. Most likely explanation: manual testing/
+  demoing of the two just-shipped features that morning (repeated "All Time"
+  exports or historical month switches each do one small `select('*')`
+  round-trip) — plausible at ~1.2GB/hour... actually more like dozens of
+  clicks — not confirmed, just the best fit given nothing periodic was found.
+
+**New, separate finding (not yet explained):** live `postgrest` logs show a
+recurring `Warp server error: Thread killed by timeout manager` message —
+intermittent (every 20-90 min) on 09-10 Aug, but firing every ~30-90
+*seconds* as of this check (11 Aug, live). This is a low-level PostgREST/Warp
+HTTP-server log with no request path/size attached, so it's unconfirmed
+whether it's egress-relevant (it may just be idle keep-alive connections
+timing out, which transfer ~0 bytes) or a symptom of something hanging. Flagged
+here since its frequency is visibly climbing today — worth a check next time
+if 11 Aug's egress reading comes back elevated too.
