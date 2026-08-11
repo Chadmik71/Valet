@@ -79,6 +79,10 @@
     background: #fbf1e0;
     color: #a8720a;
   }
+  .tag.watch {
+    background: #e8f0fb;
+    color: #1a5aa8;
+  }
   .footer {
     margin-top: 20px;
     padding-top: 12px;
@@ -222,6 +226,58 @@
     <div class="row">
       <div class="label result">What we found and fixed</div>
       <div class="body">The balance really is low &mdash; about $4.93 left, and at the recent pace of spending (about 55 cents a day on average) that's roughly 9 days before it runs out. Along the way we also found a hidden bug: the tool that checks the text-message balance had been stuck for weeks showing very old messages from back in June, no matter when it was checked &mdash; so it looked fine when it wasn't really being watched properly. That's now fixed, and a new daily cost record has been started (like the internet-data one) so this can be tracked properly and topped up before it runs out.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">9 August 2026</span>
+    <h2>Stopped two cars being able to share the same parking bay <span class="tag">Fixed</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Staff found they could accidentally put two different cars in the same bay number.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found and fixed</div>
+      <div class="body">Two of the three ways staff can assign a bay already checked properly and blocked this. The third way &mdash; the quick "assign a bay" button on the dashboard &mdash; skipped that check. Fixed it to use the same check as the other two, so all three now block a bay that's already taken.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Found and fixed the real reason internet data use crept up in recent weeks <span class="tag watch">Watching</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">Keep tracking how much internet data the app uses, and see if we can get back onto Supabase's free plan instead of the $25/month plan we're currently on.</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we found and fixed</div>
+      <div class="body">One day this week used far more data than usual (about 385 MB). Digging deeper, the real story wasn't that one day &mdash; it's something that's been quietly happening for weeks: every time a staff phone or tablet wakes up, switches apps, or its connection drops and reconnects, the app was re-downloading the entire list of cars from scratch, even when almost nothing had changed. That happens a lot during a shift, so it added up fast. Fixed it so the app only downloads what's actually new or changed, plus a small check for anything deleted &mdash; cutting each of those re-downloads by roughly 80-100 times. Tested directly against the real data: about 2&nbsp;MB down to about 28&nbsp;KB per check. Still waiting to see a full day's real number before deciding whether to switch back to the free plan.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Set up an automatic version of this Fix Log <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">How can this log keep itself updated automatically every time something gets fixed or added?</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we did</div>
+      <div class="body">Turned the "add an entry every time something's fixed" habit into a proper, saved rule that travels with the app's files &mdash; so it happens the same way every time, in any future session, rather than relying on being remembered.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="date">11 August 2026</span>
+    <h2>Added a way to track "did this actually work?" <span class="tag">Done</span></h2>
+    <div class="row">
+      <div class="label asked">What was asked</div>
+      <div class="body">How can I follow up later on what got fixed, to check it actually worked?</div>
+    </div>
+    <div class="row">
+      <div class="label result">What we did</div>
+      <div class="body">Added a "still watching" section to the log for anything that was fixed but needs a bit more time &mdash; like a day of real use &mdash; to be sure it actually worked. Once it's confirmed, it gets marked off and moved out of that section.</div>
     </div>
   </div>
 
