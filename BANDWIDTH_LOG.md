@@ -236,3 +236,21 @@ naturally reloaded at least once (start of shift) will be the first clean
 sample of the new code path running all day. Left the "Egress reconcile fix"
 item open in `FIX_LOG.md`'s Open follow-ups — do not close it out on today's
 number alone.
+
+## 2026-08-11 (evening): 11 Aug closing near 202.7MB — consistent with the afternoon reading
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip on the still-in-progress
+11 Aug bar:
+
+- **11 Aug 2026 (partial, evening Sydney): ~202.7MB total** — 202.439MB
+  PostgREST (99.9%), 170.696KB Functions (0.1%), 83.039KB Auth (0.0%),
+  42.437KB Realtime (0.0%).
+- **Cumulative this cycle: 1.409GB / 250GB (<1%).** Still healthy.
+
+Only a ~5.8MB rise since the 196.9MB afternoon reading — no further debugging
+activity happened in between, so this looks like ordinary staff traffic, not
+a new leak. Doesn't change the read from the last entry: 11 Aug is still a
+mixed pre/post-fix, partly-my-own-testing day, so it's not the clean sample.
+**12 Aug's closed full-day total is still the real test** for whether
+`lightFullReconcile()` (commit `1783b9b`) actually holds the daily baseline
+down — check that first thing tomorrow.
