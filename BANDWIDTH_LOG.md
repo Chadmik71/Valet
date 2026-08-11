@@ -212,6 +212,25 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip on the still-in-p
    next refresh. So today's figure is a blend of old and new behaviour, not
    a clean "after" sample.
 
+## 2026-08-11 (later afternoon): 11 Aug up to 196.9MB — dominated by today's own debugging, not a leak
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip on the still-in-progress
+11 Aug bar:
+
+- **11 Aug 2026 (partial, later afternoon Sydney): 196.9MB total** — 196.681MB
+  PostgREST (99.9%), 109.023KB Functions, 56.212KB Auth, 32.79KB Realtime.
+- **Cumulative this cycle: 1.403GB / 250GB (<1%).** Still healthy.
+
+The ~100MB jump since the 97.36MB reading earlier today is almost entirely
+**my own live debugging session**, not a regression: diagnosing why the new
+"who's online" feature wasn't working involved repeated manual full
+`select('*')` fetches (~2MB each) against production to isolate a Realtime
+Presence bug (see `FIX_LOG.md` — root cause was `supabase-js@2.45.4` having
+broken Presence; fixed by upgrading to `2.112.2`). That work is done now, so
+this reading isn't a fresh baseline either — the real "is the reconcile fix
+actually clean" answer still needs **12 Aug's closed full-day total**, same
+as noted above.
+
 **Real test is tomorrow (12 Aug):** a full day where every device has
 naturally reloaded at least once (start of shift) will be the first clean
 sample of the new code path running all day. Left the "Egress reconcile fix"
