@@ -187,3 +187,33 @@ whether it's egress-relevant (it may just be idle keep-alive connections
 timing out, which transfer ~0 bytes) or a symptom of something hanging. Flagged
 here since its frequency is visibly climbing today — worth a check next time
 if 11 Aug's egress reading comes back elevated too.
+
+## 2026-08-11 (afternoon): 11 Aug partial-day at 97.36MB — mixed pre/post-fix, not a clean read yet
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip on the still-in-progress
+11 Aug bar:
+
+- **11 Aug 2026 (partial, ~mid-afternoon Sydney): 97.36MB total** — 97.322MB
+  PostgREST (100.0%), 23.947KB Functions, 5.517KB Auth, 4.823KB Realtime.
+- **Cumulative this cycle: 1.299GB / 250GB (<1%).** Still healthy regardless
+  of how the fix verification lands.
+
+**Why this reading isn't a clean confirmation of the `lightFullReconcile()` fix
+(commit `1783b9b`, deployed ~midday today) yet:**
+1. It mixes several hours of **pre-fix** traffic (this morning, before the fix
+   was pushed) with whatever's happened since.
+2. It includes ~2.1MB from my own live verification testing against
+   production (deliberately fetching both the old full `select('*')` and the
+   new `select('id')` query once each, to measure the real byte difference —
+   see `FIX_LOG.md`'s 2026-08-11 entry).
+3. GitHub Pages doesn't push updates into already-open tabs — any staff
+   device that had the app open before the deploy and hasn't reloaded since
+   is still running the **old** full-`select('*')` reconcile code until its
+   next refresh. So today's figure is a blend of old and new behaviour, not
+   a clean "after" sample.
+
+**Real test is tomorrow (12 Aug):** a full day where every device has
+naturally reloaded at least once (start of shift) will be the first clean
+sample of the new code path running all day. Left the "Egress reconcile fix"
+item open in `FIX_LOG.md`'s Open follow-ups — do not close it out on today's
+number alone.
