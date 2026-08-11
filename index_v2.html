@@ -13812,6 +13812,12 @@ const SALT = CENTRE.salt;
 
 let supa = null;       // Supabase client
 let currentUser = null; // { username, displayName, role }
+// When THIS browser tab/session started — tracked separately from realtime
+// reconnects (which happen far more often) so the "online staff" presence
+// list can show how long a device has genuinely been open, not just since
+// its last socket reconnect. Also doubles as a quick way to spot a stale
+// device that's been sitting open for unusually long.
+const clientSessionStartedAt = new Date().toISOString();
 // Cached active-staff roster ({username, display_name, role, is_active}), kept
 // so synchronous renders (e.g. the bag-assign picker) can map usernames to
 // display names without an async fetch. Refreshed on load and staff edits.
@@ -14389,12 +14395,22 @@ function startRealtimeSync() {
     .on('broadcast', { event: 'print-request' }, ({ payload }) => handleRemotePrintRequest(payload))
     // The print station confirming it printed a tag we asked for.
     .on('broadcast', { event: 'print-ack' }, ({ payload }) => handlePrintAck(payload))
+    // "Who's online" — every connected device tracks itself; any join/leave/
+    // reconnect anywhere re-syncs everyone's view of who's currently on.
+    .on('presence', { event: 'sync' }, () => updateOnlineStaffUI())
     .subscribe(status => {
       if (myGen !== realtimeGen) return;          // stale channel (superseded) — ignore
       if (status === 'SUBSCRIBED') {
         realtimeReconnectDelay = 2000;            // healthy again — reset backoff
         if (realtimeHadFirstSubscribe) reconcileFromCloud('reconnect');
         realtimeHadFirstSubscribe = true;
+        if (currentUser) {
+          realtimeChannel.track({
+            username: currentUser.username,
+            displayName: currentUser.displayName,
+            since: clientSessionStartedAt,
+          });
+        }
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         // The channel dropped — commonly the auth token behind postgres_changes
         // expired (~1h). Re-subscribe with a fresh token (onAuthStateChange has
@@ -15682,6 +15698,7 @@ function initializeUI() {
 
   // Show current user in header
   updateUserBadge();
+  updateOnlineStaffUI();   // initial render (self only, until the presence sync arrives)
 
   // Apply this device's saved UI mode (simple Mobile vs full Desktop)
   applyUiMode();
@@ -15733,6 +15750,66 @@ function updateUserBadge() {
     badge.textContent = (currentUser.displayName || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || currentUser.displayName;
     badge.title = 'Tap to log out';
   }
+}
+
+// "Who's online" — reads Supabase Realtime Presence for the shared
+// 'valet-changes' channel (every connected device calls .track() on
+// subscribe, see startRealtimeSync). Shows a count of distinct STAFF
+// (by username — the same person on two devices only counts once) with a
+// click-to-expand list of every connected DEVICE, each with how long that
+// browser tab has actually been open. That per-device "since" is also a
+// handy diagnostic: a device sitting open far longer than a normal shift is
+// worth a manual refresh, e.g. after a code deploy that a static host like
+// GitHub Pages can't push into an already-open tab.
+function updateOnlineStaffUI() {
+  if (!realtimeChannel) return;
+  let entries;
+  try {
+    entries = Object.values(realtimeChannel.presenceState()).flat().filter(p => p && p.username);
+  } catch (e) { return; }
+  renderOnlineStaffBadge(entries);
+}
+
+function renderOnlineStaffBadge(entries) {
+  let badge = document.getElementById('online-staff-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'online-staff-badge';
+    badge.style.cssText = 'font-size:11px;font-weight:600;letter-spacing:.5px;margin-top:3px;color:var(--bronze);cursor:pointer;position:relative';
+    badge.onclick = (e) => {
+      e.stopPropagation();
+      const dd = document.getElementById('online-staff-dropdown');
+      if (dd) dd.style.display = dd.style.display === 'block' ? 'none' : 'block';
+    };
+    document.addEventListener('click', () => {
+      const dd = document.getElementById('online-staff-dropdown');
+      if (dd) dd.style.display = 'none';
+    });
+    const dateEl = document.querySelector('.header-date');
+    if (dateEl) dateEl.appendChild(badge);
+  }
+  const distinctStaff = new Set(entries.map(p => p.username));
+  badge.textContent = '👥 ' + distinctStaff.size + ' online';
+  badge.title = 'Tap to see who';
+
+  let dd = document.getElementById('online-staff-dropdown');
+  if (!dd) {
+    dd = document.createElement('div');
+    dd.id = 'online-staff-dropdown';
+    dd.style.cssText = 'display:none;position:absolute;top:100%;right:0;margin-top:4px;background:var(--card,#fff);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.2);padding:6px;min-width:200px;z-index:300;text-align:left;cursor:default';
+    dd.onclick = e => e.stopPropagation();
+    badge.appendChild(dd);
+  }
+  const sorted = [...entries].sort((a, b) => (a.since || '').localeCompare(b.since || ''));
+  dd.innerHTML = sorted.length
+    ? sorted.map(p => {
+        const mins = p.since ? Math.max(0, Math.round((Date.now() - new Date(p.since).getTime()) / 60000)) : null;
+        const ago = mins == null ? 'just now' : mins < 60 ? mins + 'm ago' : Math.round(mins / 60) + 'h ago';
+        return '<div style="padding:4px 8px;font-size:12px;color:#333;white-space:nowrap">'
+          + arvEsc(p.displayName || p.username)
+          + ' <span style="color:var(--text-muted)">&middot; device open ' + ago + '</span></div>';
+      }).join('')
+    : '<div style="padding:4px 8px;font-size:12px;color:var(--text-muted)">No one else online</div>';
 }
 
 // Check for existing session on page load
