@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chatswood Chase Valet App — Feature Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --maroon:#531620;--maroon-light:#6e1d2c;--bronze:#a48d53;--bronze-light:#b08f59;
+    --green:#4a7c4f;--red:#a83838;--sandstone:#f1f0ee;--bone:#fbfaf8;
+    --text:#2a2420;--text-muted:#6c6359;--border:#e3ded7;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:'Inter',Arial,sans-serif;color:var(--text);line-height:1.6;margin:0;background:#fff}
+  .wrap{max-width:880px;margin:0 auto;padding:32px 26px 80px}
+  header.cover{border-bottom:3px solid var(--bronze);padding-bottom:18px;margin-bottom:8px}
+  header.cover .brand{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:var(--bronze);font-weight:600}
+  header.cover h1{font-size:30px;color:var(--maroon);margin:6px 0 4px}
+  header.cover .sub{color:var(--text-muted);font-size:14px}
+  h2{font-size:21px;color:var(--maroon);margin:38px 0 6px;padding-top:10px;border-top:1px solid var(--border)}
+  h3{font-size:16px;color:var(--maroon-light);margin:22px 0 4px}
+  h4{font-size:14px;color:var(--text);margin:16px 0 2px;text-transform:uppercase;letter-spacing:.5px}
+  p{margin:6px 0}
+  ul,ol{margin:6px 0 12px;padding-left:22px}
+  li{margin:3px 0}
+  code{background:var(--sandstone);padding:1px 6px;border-radius:4px;font-family:'Courier New',monospace;font-size:.9em}
+  .tag{display:inline-block;background:var(--maroon);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;letter-spacing:.5px;vertical-align:middle}
+  .tag.bronze{background:var(--bronze)}.tag.green{background:var(--green)}.tag.red{background:var(--red)}
+  .note{background:var(--sandstone);border-left:3px solid var(--bronze);padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;font-size:13.5px}
+  .note.warn{border-left-color:var(--red)}
+  .note.tip{border-left-color:var(--green)}
+  .note b{color:var(--maroon)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:12px 0}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--text-muted);background:var(--sandstone)}
+  .toc{background:var(--sandstone);border-radius:8px;padding:16px 20px;margin:18px 0 8px;column-count:2;column-gap:30px}
+  .toc a{color:var(--maroon);text-decoration:none;font-size:13.5px;display:block;padding:3px 0;break-inside:avoid}
+  .toc a:hover{text-decoration:underline}
+  .pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:12px;font-weight:600;background:var(--bone)}
+  figure.shot{margin:16px 0 18px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  figure.shot img{display:block;width:100%;height:auto}
+  figure.shot figcaption{padding:8px 13px;font-size:12px;color:var(--text-muted);background:var(--sandstone);border-top:1px solid var(--border)}
+  figure.shot figcaption b{color:var(--maroon)}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+  .stat{flex:1 1 150px;background:var(--sandstone);border-radius:8px;padding:12px 14px}
+  .stat .n{color:var(--maroon);font-weight:700;font-size:14px;display:block;margin-bottom:2px}
+  .printbar{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);padding:10px 0;margin-bottom:10px;display:flex;justify-content:flex-end;z-index:10}
+  .btn{background:var(--maroon);color:#fff;border:none;border-radius:6px;padding:9px 18px;font-size:13px;font-weight:600;letter-spacing:.5px;cursor:pointer;font-family:inherit}
+  .btn:hover{background:var(--maroon-light)}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);color:var(--text-muted);font-size:12px}
+  @media print{
+    .printbar{display:none}
+    body{font-size:11.5px}
+    .wrap{max-width:none;padding:0 8px}
+    h2{break-after:avoid;page-break-after:avoid; page-break-before: always;}
+    header.cover h2{page-break-before: avoid;}
+    h3,h4{break-after:avoid}
+    table,.note,ul,ol,figure.shot{break-inside:avoid}
+    a{color:var(--text);text-decoration:none}
+  }
+  @media (max-width:620px){ .toc{column-count:1} header.cover h1{font-size:24px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="printbar"><button class="btn" onclick="window.print()">🖨 Print / Save as PDF</button></div>
+
+  <header class="cover">
+    <div class="brand">Chatswood Chase Sydney</div>
+    <h1>Valet App — Feature Guide</h1>
+    <div class="sub">A tour of what the valet operations system does, day to day and behind the scenes.</div>
+  </header>
+
+  <div class="toc">
+    <a href="#overview">Overview</a>
+    <a href="#checkin">Check-in (New Entry)</a>
+    <a href="#pickup">Quick Pickup</a>
+    <a href="#queue">Pickup Queue</a>
+    <a href="#active">Active Cars &amp; Checkout</a>
+    <a href="#bags">Bags — hands-free shopping</a>
+    <a href="#carwash">Car wash</a>
+    <a href="#dashboard">Dashboard</a>
+    <a href="#customers">Customers</a>
+    <a href="#reports">Reports</a>
+    <a href="#settings">Settings</a>
+    <a href="#ticket">Customer ticket page</a>
+    <a href="#other">Other capabilities</a>
+    <a href="#tech">Tech stack</a>
+  </div>
+
+  <!-- Overview -->
+  <h2 id="overview">Overview</h2>
+  <p>The Chatswood Chase valet app is a single web-based dashboard that runs the entire valet operation — check cars in and out, take payment, print key tags, text customers their ticket, run hands-free shopping and car wash add-ons, and give management live reports. It runs on every device at the stand (counter PC, tablets, staff phones) and stays in sync in real time.</p>
+  <div class="stats">
+    <div class="stat"><span class="n">Cloud-synced</span>Every device shares live data — a car logged on one screen appears everywhere else within seconds.</div>
+    <div class="stat"><span class="n">Works offline</span>Keeps working if the internet drops, then syncs automatically once it's back.</div>
+    <div class="stat"><span class="n">Installable</span>Adds to a tablet's home screen and runs full-screen like a native app.</div>
+    <div class="stat"><span class="n">Per-staff logins</span>Every attendant signs in individually, so parking and returns are credited correctly.</div>
+  </div>
+  <figure class="shot"><img src="screenshots/00-login.png" alt="Login screen"><figcaption><b>Login</b> — each staff member signs in with their own account.</figcaption></figure>
+
+  <!-- Check-in -->
+  <h2 id="checkin">Check-in (New Entry)</h2>
+  <p>The drop-off form. Ticket number and time-in fill automatically.</p>
+  <figure class="shot"><img src="screenshots/manual/new-entry.png" alt="New Entry / check-in form"><figcaption><b>New Entry</b> — the check-in form, including the optional car-wash picker and the tap-to-mark damage diagram.</figcaption></figure>
+  <ul>
+    <li>Captures customer name, phone (for the SMS ticket), car brand/model/colour, parking bay, and number plate — typed or read automatically with the camera (plate OCR).</li>
+    <li><b>Damage diagram</b> — tap the car outline to mark existing scratches/dents before parking. If the plate has been seen before, the last visit's marks pre-load automatically so staff can confirm or update them.</li>
+    <li><b>Charge to shop</b>, <b>VIP</b> flag, <b>car wash add-on</b>, and free-text notes, all on the same form.</li>
+    <li>Optional photo + GPS capture at drop-off.</li>
+    <li>Saving auto-prints the key tag, texts the customer their QR ticket link, and puts the car on Active Cars / Dashboard everywhere instantly.</li>
+  </ul>
+
+  <!-- Quick Pickup -->
+  <h2 id="pickup">Quick Pickup</h2>
+  <p>Fast lookup to return a car: scan the key tag / QR ticket, or search by ticket, name, plate or bay from the top-bar search on any screen.</p>
+  <figure class="shot"><img src="screenshots/manual/quick-pickup.png" alt="Quick Pickup screen"><figcaption><b>Quick Pickup</b> — search or scan to find a car instantly.</figcaption></figure>
+  <div class="note"><b>Lost ticket?</b> A dedicated flow lets staff find the car by customer details, log the identity check, then release — recorded against their login.</div>
+
+  <!-- Queue -->
+  <h2 id="queue">Pickup Queue</h2>
+  <p>When a customer asks for their car ahead of time, it goes in the queue with an ETA countdown that changes colour as it gets closer to due (and flags overdue in red). Status can be pushed live to the customer's ticket page — "on its way" or "ready at the desk".</p>
+  <figure class="shot"><img src="screenshots/manual/pickup-queue.png" alt="Pickup Queue screen"><figcaption><b>Queue</b> — requested cars sorted by urgency, with a colour-coded countdown.</figcaption></figure>
+
+  <!-- Active Cars -->
+  <h2 id="active">Active Cars &amp; Checkout</h2>
+  <p>The full working list of everything on site — ticket, customer, plate, brand, bay, time in, running duration (colour-coded) and fee.</p>
+  <figure class="shot"><img src="screenshots/manual/active-cars.png" alt="Active Cars screen"><figcaption><b>Active Cars</b> — on-site cars with all row actions, pickup countdown, car-wash status, and "Checked Out Today" below.</figcaption></figure>
+  <p>Per-row actions: call the customer, resend the QR ticket, reprint the key tag, edit details, log a bag pickup, add/manage a car wash, view/edit damage marks &amp; notes, put the car in the queue, or check it out. An overstay banner flags any car left overnight or past a configurable hour threshold.</p>
+  <h3>Checkout &amp; payment</h3>
+  <ul>
+    <li>Card / Cash / EFTPOS / Other, Unpaid, Complimentary, or Charge to shop/account</li>
+    <li><b>Level 1 promotion</b> — free valet &amp; parking against a validated shop receipt</li>
+    <li>Store validations and %/$ discounts</li>
+    <li>Tips and fee overrides</li>
+    <li><b>Square Terminal</b> integration — send the charge to a paired card terminal; a successful charge auto-checks the car out</li>
+    <li>A mandatory <b>return condition</b> check (clean vs. new damage/incident, with customer acknowledgement) logged for the record</li>
+  </ul>
+
+  <!-- Bags -->
+  <h2 id="bags">Bags — hands-free shopping</h2>
+  <p>Customers leave purchases at stores; valet collects everything and loads the car while it's parked.</p>
+  <figure class="shot"><img src="screenshots/manual/bags.png" alt="Bags screen"><figcaption><b>Bags</b> — each job with its store, bag count, and the requested → collecting → in car → done tracker.</figcaption></figure>
+  <ul>
+    <li>Jobs move through <b>requested → collecting → in car → done</b>; a car can have several rounds running at once (one per shop), each tracked separately.</li>
+    <li>Any staff member can claim a job, or on desktop a job can be <b>assigned to a specific staff member</b> — it rings/vibrates their phone with an alert (plus an OS notification if the app is closed).</li>
+    <li>A proof photo is taken in the car when bags are loaded and sent to the customer.</li>
+    <li>Both the collector and the loader are credited separately in reports.</li>
+  </ul>
+
+  <!-- Car wash -->
+  <h2 id="carwash">Car wash</h2>
+  <p>Valet can add an on-site car wash from Xtream Car Care and bill it on the same valet ticket.</p>
+  <figure class="shot"><img src="screenshots/manual/settings-carwash.png" alt="Settings — Car Wash costs"><figcaption><b>Settings — Car Wash</b> — wholesale cost per package feeds the margin report.</figcaption></figure>
+  <ul>
+    <li>Add a wash at check-in or any time while parked; pick package + size (small/large) and the price fills in automatically.</li>
+    <li>Track the car's wash status (taken to wash → washed, back) right from Active Cars.</li>
+    <li>Wholesale cost per package is set in Settings so the Payments report shows what's owed to Xtream and the margin kept, separate from parking revenue.</li>
+  </ul>
+
+  <!-- Dashboard -->
+  <h2 id="dashboard">Dashboard</h2>
+  <p>The at-a-glance view of the day for managers and staff alike.</p>
+  <figure class="shot"><img src="screenshots/manual/dashboard.png" alt="Dashboard"><figcaption><b>Dashboard</b> — live stat tiles, handover notes, top brands and recent activity.</figcaption></figure>
+  <ul>
+    <li>Stat tiles: cars in, cars out, currently on site, pickups pending, today's revenue (tap to see who paid what), average stay.</li>
+    <li>A shared handover notepad that auto-clears each morning.</li>
+    <li>Top brands and recent activity for the day.</li>
+    <li><b>Live customer feedback alerts</b> — a star rating left on a customer's ticket page pops a toast on every open device instantly (flagged red for 3★ or under) and pins a banner until reviewed.</li>
+  </ul>
+
+  <!-- Customers -->
+  <h2 id="customers">Customers</h2>
+  <p>A searchable database of everyone who's used the valet, built automatically from every visit and keyed by number plate.</p>
+  <figure class="shot"><img src="screenshots/08-customers.png" alt="Customers screen"><figcaption><b>Customers</b> — visit history, total spend, and VIP/repeat flags.</figcaption></figure>
+  <ul>
+    <li>Search by name, plate or phone to see full visit history and total spend; returning customers and VIPs are flagged.</li>
+    <li>Every visit's damage record (intake marks, notes, and how the car was returned) is one tap away.</li>
+  </ul>
+
+  <!-- Reports -->
+  <h2 id="reports">Reports</h2>
+  <p>Manager analytics across a chosen date range, exportable to CSV or print-ready PDF.</p>
+  <figure class="shot"><img src="screenshots/manual/reports-management.png" alt="Reports — Management Summary"><figcaption><b>Management Summary</b> — centre-facing roll-up, printable as a one-pager.</figcaption></figure>
+  <figure class="shot"><img src="screenshots/manual/reports-payments.png" alt="Reports — Payments"><figcaption><b>Payments</b> — cash-up, shop accounts, car wash margin, promotions and discounts.</figcaption></figure>
+  <figure class="shot"><img src="screenshots/manual/reports-volume.png" alt="Reports — Daily Volume"><figcaption><b>Daily Volume</b> — cars and revenue per day, trends, peak times, brand breakdown.</figcaption></figure>
+  <table>
+    <tr><th>Report</th><th>Covers</th></tr>
+    <tr><td><b>Management Summary</b></td><td>Cars, revenue, tips, car wash, validation value, pickup wait SLA, peak occupancy, incidents.</td></tr>
+    <tr><td><b>Daily Volume</b></td><td>Cars/revenue per day, trends, peak times, brand breakdown.</td></tr>
+    <tr><td><b>Payments</b></td><td>Cash-up, shop accounts, car wash margin, Level 1 promotion usage, discounts.</td></tr>
+    <tr><td><b>Staff Performance</b></td><td>Cars parked / checked out / revenue / tips per attendant.</td></tr>
+    <tr><td><b>Customers</b></td><td>Stay-length tiers, repeat customer stats.</td></tr>
+    <tr><td><b>Customer Feedback</b></td><td>Star ratings and comments from ticket pages.</td></tr>
+    <tr><td><b>Bag Jobs by Staff</b></td><td>Hands-free shopping jobs and timing per staff member.</td></tr>
+    <tr><td><b>Period Comparison</b></td><td>This week/month/year vs. last.</td></tr>
+    <tr><td><b>Incidents</b></td><td>Logged return-condition damage with acknowledgement.</td></tr>
+    <tr><td><b>Full Log</b></td><td>Every entry, searchable, with damage-record access.</td></tr>
+  </table>
+
+  <!-- Settings -->
+  <h2 id="settings">Settings</h2>
+  <p>Manager configuration: staff logins &amp; access, car park capacity and overstay alert threshold, retailer list, car wash wholesale pricing, SMS/alert messaging, device setup (key-tag printer, Square Terminal, scanner), and data export/backup.</p>
+  <figure class="shot"><img src="screenshots/10-settings.png" alt="Settings screen"><figcaption><b>Settings</b> — manager-level configuration for the whole system.</figcaption></figure>
+  <p>Other configurable programs (default off, enabled per centre as needed):</p>
+  <ul>
+    <li><b>Loyalty program</b> — every <i>N</i> paid valets earns the next one free, auto-applied at checkout.</li>
+    <li><b>Multi-centre support</b> — the app can be cloned to a new site from one central config block, for rollout beyond Chatswood Chase.</li>
+  </ul>
+
+  <!-- Ticket -->
+  <h2 id="ticket">Customer ticket page</h2>
+  <p>Every customer gets a link (texted at check-in) to a live ticket page showing their car's status and a QR code, with a spot to leave a star rating and feedback after pickup.</p>
+  <figure class="shot"><img src="screenshots/11-customer-ticket.png" alt="Customer ticket page"><figcaption><b>Customer ticket</b> — live status, QR code, and post-pickup feedback.</figcaption></figure>
+
+  <!-- Other -->
+  <h2 id="other">Other capabilities</h2>
+  <ul>
+    <li><b>Number-plate OCR</b> — camera-read plate at check-in, cloud recognition with an on-device offline fallback.</li>
+    <li><b>BIXOLON key-tag printing</b> — auto-prints on check-in via a local bridge app; one-tap reprint anytime.</li>
+    <li><b>ClickSend SMS</b> — automatic QR ticket text on check-in, and status pushes from the queue.</li>
+    <li><b>Square Terminal payments</b> — in-person card charges from checkout, tied to a per-device terminal ID.</li>
+    <li><b>Cloud photo storage</b> — bag/car photos are stored in cloud storage rather than the database, keeping the app fast as photo volume grows.</li>
+  </ul>
+
+  <!-- Tech -->
+  <h2 id="tech">Tech stack</h2>
+  <ul>
+    <li>Single-file web app, hosted on GitHub Pages</li>
+    <li>Backend: Supabase (database + authentication + file storage + serverless functions)</li>
+    <li>Integrations: ClickSend (SMS), Square (card payments), BIXOLON (key-tag printing)</li>
+    <li>Timestamps stored in UTC, always displayed in Sydney local time</li>
+  </ul>
+
+  <footer>
+    Chatswood Chase Valet App — feature guide. For full day-to-day staff instructions, see the Staff &amp; Manager Manual.
+  </footer>
+</div>
+</body>
+</html>
