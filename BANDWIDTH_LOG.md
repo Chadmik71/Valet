@@ -254,3 +254,25 @@ mixed pre/post-fix, partly-my-own-testing day, so it's not the clean sample.
 **12 Aug's closed full-day total is still the real test** for whether
 `lightFullReconcile()` (commit `1783b9b`) actually holds the daily baseline
 down — check that first thing tomorrow.
+
+## 2026-08-12 (morning): 11 Aug closed at 209.9MB; 12 Aug just starting
+
+Per-project dashboard, `chatswood-valet` filter:
+
+- **11 Aug 2026 (closed, final): 209.9MB total** — 209.498MB PostgREST
+  (99.8%), 219.489KB Functions (0.1%), 115.997KB Auth (0.1%), 50.15KB
+  Realtime (0.0%).
+- **12 Aug 2026 (partial, early morning): ~1.64MB total** — 1.615MB
+  PostgREST (98.6%), 20.197KB Functions (1.2%), 3.197KB Auth (0.2%). Too
+  early in the day to mean much yet.
+- **Cumulative this cycle: 1.419GB / 250GB (<1%).** Still healthy.
+
+11 Aug's closed number (209.9MB) lands mid-pack — well below the 7-9 Aug
+spike days (380-484MB) but still elevated vs. 10 Aug's clean 60MB, consistent
+with it being a mixed day (fix deployed midday + ~2MB of my own live
+verification testing + a Realtime Presence debugging session that afternoon,
+see the two 2026-08-11 entries above). **Still not a clean read of the fix**
+— 11 Aug had known extra activity baked in. The actually-clean test is a day
+with zero manual debugging/testing on top of the new code: watch **12 Aug's
+close** (tomorrow) for that, since today has no known extra activity planned
+so far.
