@@ -294,3 +294,17 @@ full-day figure the open follow-up asks for. It's still a very good early
 sign (well under an hour's worth of the old 7-9 Aug pace), but do not use
 this number to close out the "Egress reconcile fix — free-tier decision"
 follow-up. Re-check tomorrow morning (13 Aug) once 12 Aug has fully closed.
+
+## 2026-08-12 (later, routine "check bandwidth" ask): 12 Aug up to ~9.29MB — still healthy, still partial
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **12 Aug 2026 (partial, still today — NOT closed): ~9.29MB total** —
+  9.156MB PostgREST (98.6%), 93.283KB Functions (1.0%), 35.078KB Auth (0.4%),
+  3.857KB Realtime (0.0%). Up from ~4.18MB at the last check earlier today —
+  normal accumulation through the day, no jump.
+- **Cumulative this cycle: 1.427 GB / 250 GB (<1%).**
+
+Still not closed — same caveat as the entry above applies. Trajectory remains
+well within the healthy range; 13 Aug morning is still the real test for the
+free-tier decision.
