@@ -276,3 +276,21 @@ see the two 2026-08-11 entries above). **Still not a clean read of the fix**
 with zero manual debugging/testing on top of the new code: watch **12 Aug's
 close** (tomorrow) for that, since today has no known extra activity planned
 so far.
+
+## 2026-08-12 (asked mid-conversation, prompted by a Supabase-vs-Neon cost question): 12 Aug still in progress, not closeable yet — but tracking very healthy
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **12 Aug 2026 (partial, still today — NOT closed):** ~4.176MB total — 4.121MB
+  PostgREST (98.7%), 39.67KB Functions (0.9%), 13.11KB Auth (0.3%), 1.928KB
+  Realtime (0.0%).
+- **11 Aug 2026 (closed, re-confirmed):** 209.498MB PostgREST + 115.997KB Auth
+  + 50.15KB Realtime + 219.489KB Functions — matches the earlier entry exactly,
+  no drift.
+- **Cumulative this cycle: 1.421 GB / 250 GB (<1%).**
+
+**Important:** today (12 Aug) is still in progress — this is NOT the closed
+full-day figure the open follow-up asks for. It's still a very good early
+sign (well under an hour's worth of the old 7-9 Aug pace), but do not use
+this number to close out the "Egress reconcile fix — free-tier decision"
+follow-up. Re-check tomorrow morning (13 Aug) once 12 Aug has fully closed.
