@@ -308,3 +308,24 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
 Still not closed — same caveat as the entry above applies. Trajectory remains
 well within the healthy range; 13 Aug morning is still the real test for the
 free-tier decision.
+
+## 2026-08-13 (morning): 12 Aug CLOSED at 16.52MB — the real test, and it passed
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **12 Aug 2026 (closed, final): 16.52MB total** — 16.32MB PostgREST (98.8%),
+  141.535KB Functions (0.8%), 53.857KB Auth (0.3%), 5.787KB Realtime (0.0%).
+  This is the first full day, guaranteed clean start-to-finish under the
+  `lightFullReconcile()` fix — and it landed **dramatically** below every
+  other closed day this cycle (484MB → 205MB → 385MB → 60MB → 210MB →
+  **16.5MB**), not just an improvement but the best day by a wide margin.
+- **13 Aug 2026 (partial, still today — NOT closed): ~4.67MB so far** —
+  4.622MB PostgREST (99.0%), 21.944KB Auth (0.5%), 20.965KB Functions (0.4%),
+  4.817KB Realtime (0.1%). Healthy pace, consistent with 12 Aug's low baseline.
+- **Cumulative this cycle (06 Aug–13 Aug, chatswood-valet only): 1.439 GB /
+  250 GB (0.58%)** — read directly from the project's Usage Summary tile.
+
+**This closes out the "12 Aug closed full-day total" open follow-up.** The
+egress leak fix (`lightFullReconcile()`, commit `1783b9b`) is confirmed
+holding on a fully clean day, not just a partial/mixed sample. See
+`FIX_LOG.md` for the free-tier (5GB/mo) decision this unblocks.
