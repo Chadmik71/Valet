@@ -9,7 +9,7 @@ A single-page valet operations dashboard for Chatswood Chase's valet service —
 > This README is a features tour with screenshots. For step-by-step "how do I…" instructions, use `MANUAL.md`.
 
 ## Contents
-[Overview](#overview) · [Check-in](#check-in-new-entry) · [Quick Pickup](#quick-pickup) · [Pickup Queue](#pickup-queue) · [Active Cars](#active-cars) · [Bags — hands-free shopping](#bags--hands-free-shopping) · [Car wash](#car-wash) · [Dashboard](#dashboard) · [Customers](#customers) · [Reports](#reports) · [Settings](#settings) · [Customer ticket page](#customer-ticket-page) · [Other capabilities](#other-capabilities) · [Tech stack](#tech-stack)
+[Overview](#overview) · [Check-in](#check-in-new-entry) · [Quick Pickup](#quick-pickup) · [Pickup Queue](#pickup-queue) · [Active Cars](#active-cars) · [Bags — hands-free shopping](#bags--hands-free-shopping) · [Car wash](#car-wash) · [Dashboard](#dashboard) · [Customers](#customers) · [Reports](#reports) · [Settings](#settings) · [Customer ticket page](#customer-ticket-page) · [Other capabilities](#other-capabilities) · [How it was built](#how-it-was-built) · [How to access everything](#how-to-access-everything)
 
 ## Overview
 
@@ -151,12 +151,36 @@ Every customer gets a link (texted at check-in) to a live ticket page showing th
 - **Square Terminal payments** — in-person card charges from checkout, tied to a per-device terminal ID.
 - **Entry photos in cloud storage** — bag/car photos are stored in a Supabase Storage bucket (not inlined in the database), keeping the app fast as photo volume grows.
 
-## Tech stack
+## How it was built
 
-- Single-file frontend: `index_v2.html` (HTML/CSS/vanilla JS), hosted on GitHub Pages
-- Backend: [Supabase](https://supabase.com) (Postgres + Auth + Storage + Edge Functions) — tables `entries`, `staff`, `app_settings`, `audit_log`
-- Edge Functions: `send-ticket-sms`, `square-terminal-checkout`, `clicksend-rate`, device-token `refresh`
-- Timestamps stored UTC, always displayed in Sydney local time
+**No build step, no framework.** The entire app is one file — `index_v2.html` — plain HTML, CSS and vanilla JavaScript. There's no `npm install`, no bundler, no compile step: the file that's edited is exactly the file that's served. That keeps it simple to change quickly and easy to run anywhere (open it directly in a browser, or host it as a static file).
+
+**Backend: Supabase.** [Supabase](https://supabase.com) provides everything server-side, so there's no custom backend to run or maintain:
+- **Postgres database** — tables `entries`, `staff`, `app_settings`, `audit_log`. Columns are `snake_case`; the frontend converts to/from `camelCase` with `jsToDb()` / `dbToJs()` helpers.
+- **Auth** — per-staff logins, plus device-token session refresh so a tablet doesn't have to re-log-in constantly.
+- **Row Level Security (RLS)** — policies gate staff-only actions and lock customer PII behind an authenticated session.
+- **Realtime** — every device subscribes to live database changes (`postgres_changes`), which is how a car logged on one screen appears on every other screen within seconds.
+- **Storage** — bag/car check-in photos are uploaded to a Storage bucket and referenced by a short link, rather than stored inline in the database.
+- **Edge Functions** (serverless, deployed to Supabase) — `send-ticket-sms` (texts the QR ticket via ClickSend), `square-terminal-checkout` (sends a charge to a paired Square Terminal), `clicksend-rate` (SMS cost/usage reporting), and a device-token `refresh` function that silently re-authenticates a device without a password prompt.
+
+**Third-party integrations**, called directly from the frontend or an Edge Function: [ClickSend](https://clicksend.com) for SMS, [Square](https://squareup.com) for in-person card payments, and a BIXOLON SPP-R200III key-tag printer driven through a small local **WebPrint bridge app** (the browser can't talk to a receipt printer directly).
+
+**Hosting & deployment.** Static hosting on GitHub Pages, across **two** GitHub repos that both serve the same app — pushing a commit updates the live site in roughly 30–60 seconds, with no CI/CD pipeline in between.
+
+**Timestamps** are stored in UTC in the database and always converted to Sydney local time for display.
+
+**How this app is actually developed:** changes are made by editing `index_v2.html` directly with **Claude Code** (Anthropic's AI coding CLI) as a pair-programmer, committed with `git`, and pushed straight to both live GitHub Pages sites — there's no staging environment, so "push" and "ship" are the same action. Backend changes (schema, RLS policies, Edge Functions, logs) are made through Supabase's dashboard and its developer tools, and UI changes are verified by driving the actual live site in a real browser rather than a local mock.
+
+## How to access everything
+
+| What | How |
+|---|---|
+| **Use the app (staff/managers)** | Just open it in any browser — no install required: **[chatswoodchasevalet.github.io](https://chatswoodchasevalet.github.io/)** (canonical) or the fallback **[chadmik71.github.io/Valet](https://chadmik71.github.io/Valet/)**. Add to a tablet's home screen for a full-screen app-like experience. |
+| **Manager/admin features** | No separate admin panel — Dashboard, Reports and Settings live in the same app, gated behind a staff login (Desktop mode shows the full tab set). |
+| **The codebase** | One file, `index_v2.html`, in this repo. Edit it directly — no build/install step — and push to both `origin` and `neworigin` remotes to go live on both sites. |
+| **The backend (Supabase)** | Managed through the Supabase project dashboard (project `ebqiitxiyzzbkgyfypss`) — database tables, RLS policies, Storage, Auth, Edge Functions and logs all live there. |
+| **SMS (ClickSend)**, **payments (Square)**, **printing (BIXOLON)** | Configured per-device/per-centre from **Settings → Devices** and **Settings → Alerts & Messaging** inside the app itself; API credentials for ClickSend/Square live in Supabase (used by the Edge Functions), not in the frontend. |
+| **Full staff instructions** | [`MANUAL.md`](MANUAL.md) / printable [`manual.html`](manual.html) — also reachable in-app from *Settings → Help & Manual*. |
 
 ---
 *See [`MANUAL.md`](MANUAL.md) for full day-to-day operating instructions, pricing reference, troubleshooting and glossary.*
