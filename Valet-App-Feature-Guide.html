@@ -61,6 +61,8 @@
     h3,h4{break-after:avoid}
     table,.note,ul,ol,figure.shot{break-inside:avoid}
     a{color:var(--text);text-decoration:none}
+    .toc{column-count:1}
+    figure.shot img{max-height:420px;width:auto;max-width:100%;object-fit:contain;margin:0 auto;display:block}
   }
   @media (max-width:620px){ .toc{column-count:1} header.cover h1{font-size:24px} }
 </style>
@@ -75,6 +77,7 @@
     <div class="sub">A tour of what the valet operations system does, day to day and behind the scenes.</div>
   </header>
 
+  <h3 style="margin-top:22px">Contents</h3>
   <div class="toc">
     <a href="#overview">Overview</a>
     <a href="#checkin">Check-in (New Entry)</a>
