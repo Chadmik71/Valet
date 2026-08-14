@@ -330,6 +330,22 @@ egress leak fix (`lightFullReconcile()`, commit `1783b9b`) is confirmed
 holding on a fully clean day, not just a partial/mixed sample. See
 `FIX_LOG.md` for the free-tier (5GB/mo) decision this unblocks.
 
+## 2026-08-15: 14 Aug CLOSED at ~3.65MB — new best day of the cycle by a wide margin
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **14 Aug 2026 (closed, final): ~3.65MB total** — 3.602MB PostgREST (98.7%),
+  37.034KB Auth (1.0%), 5.91KB Functions (0.2%), 5.782KB Realtime (0.2%).
+  Beats 13 Aug's 11.04MB by a wide margin — third consecutive clean closed
+  day under `lightFullReconcile()` (12 Aug: 16.52MB, 13 Aug: 11.04MB, 14 Aug:
+  3.65MB), and each has come in lower than the last.
+- **15 Aug 2026 (today):** not yet on the chart — too new to have populated
+  a bar (same <24h lag seen on prior same-day checks).
+- **Cumulative this cycle (06 Aug–15 Aug, chatswood-valet only): 1.45 GB /
+  250 GB (<1%).**
+
+Fix continues to hold; no action needed.
+
 ## 2026-08-14: 13 Aug CLOSED at ~11.04MB — second-best day of the cycle, fix holding
 
 Per-project dashboard, `chatswood-valet` filter, exact tooltip:
