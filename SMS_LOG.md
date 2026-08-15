@@ -14,6 +14,7 @@ walk backward from the last page so "recent" is actually recent.
 | Date checked | Balance | Recent burn rate | Notes |
 |---|---|---|---|
 | 2026-08-09 | $4.93 | ~$0.55/day avg (43-day window, $23.76 total, 288 msgs) — ~9 days of headroom at this rate | Low-balance alert prompted this check. Daily breakdown (last 6 weeks) logged below. Spend is spiky, not flat: 1 Aug ($3.88, 49 msgs) and 28 Jun ($2.77, 35 msgs) were the two biggest days. **Action: top up the ClickSend balance** — at current pace it could run dry within ~1-2 weeks, and a $0 balance means check-in texts silently stop sending (falls back to the in-app share/copy prompt, not a hard failure, but customers stop getting the automatic text). |
+| 2026-08-15 | $19.07 | 15 Aug so far: 48 msgs / $3.80 — one of the biggest single days on record, close to 1 Aug's $3.88 high | Balance was topped up since the 08-09 low-balance alert (was $4.93, now $19.07 — comfortable headroom again). Today's spike (48 msgs) is the standout figure; rate unchanged at $0.0792/segment, all recent messages still 1 segment. Function's `daily` response this check only returned 4 recent dates (15, 09, 08, 02 Aug) rather than the full 6-week history seen on 08-09 — window/pagination behavior may have narrowed; not investigated further since balance and rate both look healthy. |
 
 ## Daily breakdown (as read 2026-08-09, last ~6 weeks)
 
