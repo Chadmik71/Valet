@@ -442,9 +442,11 @@
       + '<div style="font-size:16px;font-weight:600;color:#333;margin-bottom:8px">How did we do?</div>'
       + '<div id="rate-stars" style="display:flex;justify-content:center;gap:2px">' + s + '</div>'
       + '<div id="rate-after" style="display:none;margin-top:12px">'
-      +   '<textarea id="rate-comment" rows="2" placeholder="Anything we could do better? (optional)" '
+      +   '<div id="rate-after-heading" style="font-size:14px;font-weight:600;color:#531620;margin-bottom:8px"></div>'
+      +   '<textarea id="rate-comment" rows="2" '
       +     'style="width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:10px;padding:10px;font-family:inherit;font-size:14px"></textarea>'
       +   '<button type="button" id="rate-send" class="req-btn now" style="width:100%;margin-top:8px">Send</button>'
+      +   '<button type="button" id="rate-skip" style="width:100%;margin-top:6px;background:none;border:none;color:#999;font-size:13px;text-decoration:underline;cursor:pointer">Skip</button>'
       + '</div>'
       + '<div id="rate-done" style="display:none;color:#3a7d44;font-weight:600;margin-top:8px">Thanks for your feedback!</div>'
       + '</div>';
@@ -454,21 +456,47 @@
     if (!stars.length) return;
     var chosen = 0;
     function paint(v){ stars.forEach(function(b){ var on = +b.dataset.v <= v; b.textContent = on ? '★' : '☆'; b.style.color = on ? '#a48d53' : '#d8d2c8'; }); }
+    var box = document.getElementById('rate-box');
+    var heading = document.getElementById('rate-after-heading');
+    var comment = document.getElementById('rate-comment');
+    var send = document.getElementById('rate-send');
+    function configureAfter(score){
+      var low = score < 5;
+      if (box) box.style.borderColor = low ? '#e0b8b8' : '#ebebe9';
+      if (heading) heading.textContent = low
+        ? "We're sorry it wasn't perfect — what happened, or what could we improve?"
+        : 'Thanks! Anything you’d like to add? (optional)';
+      if (heading) heading.style.color = low ? '#531620' : '#333';
+      if (comment) comment.placeholder = low ? 'Tell us what went wrong so we can fix it…' : 'Optional comments…';
+      if (send) { send.textContent = low ? 'Submit feedback' : 'Send'; send.disabled = low; }
+    }
     stars.forEach(function(b){
       b.addEventListener('mouseenter', function(){ paint(+b.dataset.v); });
       b.addEventListener('click', async function(){
         chosen = +b.dataset.v; paint(chosen);
-        // 1-tap: record the score immediately; comment is optional after.
+        // 1-tap: record the score immediately; comment is asked for after —
+        // required (Send stays disabled until typed) for anything under 5
+        // stars, optional for a perfect score. A Skip link always lets the
+        // customer bail out without leaving a reason.
         await saveRating(chosen, null);
+        configureAfter(chosen);
         var after = document.getElementById('rate-after'); if (after) after.style.display = '';
       });
     });
     document.querySelector('#rate-stars').addEventListener('mouseleave', function(){ paint(chosen); });
-    var send = document.getElementById('rate-send');
+    if (comment) comment.addEventListener('input', function(){
+      if (chosen < 5 && send) send.disabled = comment.value.trim().length === 0;
+    });
     if (send) send.addEventListener('click', async function(){
-      send.disabled = true;
       var c = (document.getElementById('rate-comment').value || '').trim();
+      if (chosen < 5 && !c) return; // guard: Send is disabled in this state anyway
+      send.disabled = true;
       await saveRating(chosen, c);
+      document.getElementById('rate-after').style.display = 'none';
+      document.getElementById('rate-done').style.display = '';
+    });
+    var skip = document.getElementById('rate-skip');
+    if (skip) skip.addEventListener('click', function(){
       document.getElementById('rate-after').style.display = 'none';
       document.getElementById('rate-done').style.display = '';
     });
