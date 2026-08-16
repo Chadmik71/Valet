@@ -14530,20 +14530,30 @@ async function reconcileFromCloud(reason) {
       changed = entries;
     }
     if (entries.length > 0) selfHealedEmptyBoard = false;  // re-arm for the next wipe
-    if (!changed.length) return;   // idle: nothing changed → skip repaint & print
-    refreshActiveViews();
-    // Only the print station prints, and only if we had a prior snapshot (guards
-    // against a storm if this ever runs before the initial load populated entries).
+    // Print-station retry sweep: check EVERY active, bay-assigned car against
+    // autoPrintedSig, not just ones this cycle's delta flagged as "changed".
+    // Fixes a real gap (2026-08-16): a car checked in locally on this same
+    // device that failed to print (e.g. the Zebra cold-start race — see
+    // zebraPrint's built-in one-shot retry) never showed up as "changed" on
+    // later polls, because THIS device's own `entries` array already held
+    // that exact tag content — so the old changed-only loop below silently
+    // never retried it again, leaving the tag unprinted until a staff member
+    // noticed and pressed the manual button. This sweep is pure local
+    // iteration (no extra network read) and maybeAutoPrintTag/printAndTrack
+    // already no-op instantly once a tag is confirmed printed, so it's safe
+    // and cheap to re-check the whole board every ~60s poll — a failed print
+    // now self-heals within one poll cycle instead of needing intervention.
+    // Guarded on `before.size`: skip on the very first reconcile ever (no
+    // prior snapshot yet), so a fresh session doesn't reprint everything.
     if (settings.printStation && printerConfigured() && before.size) {
-      changed.forEach(e => {
-        if (e.timeOut || !e.bay) return;               // only active, bay-assigned cars get a tag
-        const prevSig = before.get(e.id);
-        // New to us (missed INSERT) or the tag content changed while we were away
-        // (e.g. a bay assigned from a phone). maybeAutoPrintTag still de-dupes via
-        // autoPrintedSig, so anything already printed here won't reprint.
-        if (prevSig === undefined || prevSig !== tagSig(e)) maybeAutoPrintTag(e);
+      entries.forEach(e => {
+        if (e.timeOut || !e.bay) return;
+        if (autoPrintedSig.get(e.id) === tagSig(e)) return;
+        maybeAutoPrintTag(e);
       });
     }
+    if (!changed.length) return;   // idle: nothing else changed → skip repaint
+    refreshActiveViews();
   } catch (e) { /* loadFromCloud already logs; keep local cache */ }
 }
 
