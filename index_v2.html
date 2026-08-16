@@ -15362,6 +15362,18 @@ async function completeLogin() {
   // 4) Fetch fresh data from cloud, then re-render. loadFromCloud has its
   //    own try/catch — it won't throw, even if the request fails.
   await loadFromCloud();
+  // Seed the print-tracking baseline: treat every currently-active,
+  // bay-assigned car as already printed BEFORE this session started.
+  // autoPrintedSig is in-memory only (doesn't survive a reload/re-login), so
+  // without this a fresh session starts with it empty — the print station's
+  // retry sweep in reconcileFromCloud (added 2026-08-16) would then see every
+  // car already in the car park as "unprinted" and print the whole board on
+  // its next reconcile. Regression found live 2026-08-16: refreshing/
+  // re-logging-in on the control PC reprinted every tag already on site.
+  // Cars checked in or that fail to print LATER in this session are still
+  // caught normally — they were never added to autoPrintedSig, so the sweep
+  // (correctly) still retries them.
+  entries.forEach(e => { if (!e.timeOut && e.bay) markPrinted(e); });
   refreshActiveViews();
   // Re-apply handover notes now that cloudSettings is populated (initializeUI
   // ran before loadFromCloud finished, so it only saw the local cache).
