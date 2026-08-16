@@ -377,6 +377,23 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
 
 Fix continues to hold; no action needed.
 
+## 2026-08-16: 15 Aug CLOSED at ~20.08MB — cumulative 1.474GB/250GB
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **15 Aug 2026 (closed, final): ~20.08MB total** — 19.756MB PostgREST
+  (98.4%), 123.285KB Realtime (0.6%), 112.979KB Auth (0.5%), 88.742KB
+  Functions (0.4%). Up from the ~13.71MB partial-day reading logged earlier
+  on 15 Aug — normal growth as the day closed out. Still well within the
+  recent low-baseline range (12–15 Aug all closed under 21MB, vs. the
+  7-9 Aug spike days of 380-484MB).
+- **16 Aug 2026 (today):** not yet on the chart — too new to have populated
+  a bar (same <24h lag seen on every prior same-day check).
+- **Cumulative this cycle (06 Aug–16 Aug, chatswood-valet only): 1.474 GB /
+  250 GB (<1%).**
+
+No action needed — fix continues to hold.
+
 ## 2026-08-14: 13 Aug CLOSED at ~11.04MB — second-best day of the cycle, fix holding
 
 Per-project dashboard, `chatswood-valet` filter, exact tooltip:
