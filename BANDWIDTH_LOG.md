@@ -377,6 +377,22 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
 
 Fix continues to hold; no action needed.
 
+## 2026-08-17: 16 Aug CLOSED at ~11.65MB — cumulative 1.49GB/250GB
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **16 Aug 2026 (closed, final): ~11.65MB total** — 11.404MB PostgREST
+  (98.0%), 96.61KB Realtime (0.8%), 91.864KB Auth (0.8%), 53.762KB Functions
+  (0.5%). Consistent with the low-baseline range every day since the
+  `lightFullReconcile()` fix (12–16 Aug all closed under 21MB).
+- **17 Aug 2026 (today, partial — NOT closed): ~3.11MB so far** — 3.067MB
+  PostgREST (98.7%), 28.001KB Auth (0.9%), 8.7KB Functions (0.3%), 5.779KB
+  Realtime (0.2%). Early-day reading, healthy pace.
+- **Cumulative this cycle (06 Aug–17 Aug, chatswood-valet only): 1.49 GB /
+  250 GB (<1%).**
+
+No action needed — fix continues to hold.
+
 ## 2026-08-16: 15 Aug CLOSED at ~20.08MB — cumulative 1.474GB/250GB
 
 Per-project dashboard, `chatswood-valet` filter, exact tooltip:
