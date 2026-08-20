@@ -427,3 +427,22 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
 
 Two clean closed days in a row (12 Aug: 16.52MB, 13 Aug: 11.04MB) now confirm
 the fix is stable, not a one-off. No new action needed.
+
+## 2026-08-20: 18 Aug CLOSED at ~8.95MB, 19 Aug CLOSED at ~8.33MB — cumulative 1.51GB/250GB
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **18 Aug 2026 (closed, final): ~8.95MB total** — 7.879MB PostgREST (88.3%),
+  955.557KB Realtime (10.5%), 82.207KB Functions (0.9%), 36.275KB Auth (0.4%).
+- **19 Aug 2026 (closed, final): ~8.33MB total** — 7.148MB PostgREST (85.8%),
+  1.092MB Realtime (13.1%), 60.38KB Functions (0.7%), 34.288KB Auth (0.4%).
+- **Cumulative this cycle (06 Aug–20 Aug, chatswood-valet only): 1.51 GB /
+  250 GB (<1%).**
+
+Both days continue the low-baseline range every closed day since the
+`lightFullReconcile()` fix (12–19 Aug all closed under 21MB). One thing worth
+flagging: Realtime's *share* of daily egress has crept up on both days
+(10.5% and 13.1%, vs. near-0% on most earlier low-baseline days) — the
+absolute bytes are still tiny (under 1.1MB/day) so not a concern yet, but
+worth a glance if Realtime's share keeps climbing on future checks. No
+action needed today.
