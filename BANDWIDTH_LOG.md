@@ -446,3 +446,30 @@ flagging: Realtime's *share* of daily egress has crept up on both days
 absolute bytes are still tiny (under 1.1MB/day) so not a concern yet, but
 worth a glance if Realtime's share keeps climbing on future checks. No
 action needed today.
+
+## 2026-08-22: 20 Aug CLOSED at 984 bytes (near-zero, flagged), 21 Aug CLOSED at ~7.62MB — cumulative 1.518GB/250GB
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **20 Aug 2026 (closed, final): 984 bytes total** — 100% PostgREST, no Auth/
+  Realtime/Functions component at all. This is essentially zero traffic for
+  a full day — far below every other closed day this cycle (previous low was
+  14 Aug's 3.65MB). **Flagged, not yet explained:** could be a legitimately
+  quiet day (e.g. no shifts/closed), or a sign the app didn't get opened/used
+  by any device that day (which would also mean no delta-poll traffic since
+  nothing was running to poll). Worth asking the user whether 20 Aug (Thu)
+  was a normal operating day — if yes, this is worth investigating as a
+  possible "app never loaded" issue rather than celebrating it as a good
+  bandwidth day.
+- **21 Aug 2026 (closed, final): ~7.62MB total** — 6.903MB PostgREST (90.6%),
+  658.773KB Realtime (8.4%), 50.798KB Auth (0.7%), 21.634KB Functions (0.3%).
+  Back to the normal low-baseline range. Realtime's share (8.4%) continues
+  the creep noted in the 18-19 Aug entry above, still small in absolute terms.
+- **22 Aug 2026 (today):** not yet on the chart — too new to have populated
+  a bar (<24h lag, consistent with every prior same-day check).
+- **Cumulative this cycle (06 Aug–22 Aug, chatswood-valet only): 1.518 GB /
+  250 GB (<1%).**
+
+No budget concern. Action item: confirm with the user whether 20 Aug's
+near-zero reading reflects a closed/no-shift day or an actual app-availability
+gap.
