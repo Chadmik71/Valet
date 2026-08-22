@@ -6598,13 +6598,12 @@ function localPlateLookup(norm){
   const res = { matched:false, source:'', name:'', visit_count:0, on_site:false, vip:false, brand:'', model:'' };
   const matches = (typeof findCustomerByRego === 'function') ? findCustomerByRego(norm) : null;
   if (matches && matches.length){
-    const recent = matches[0];
     res.matched = true; res.source = 'history';
-    res.name = (matches.find(e => e.name) || {}).name || recent.name || '';
+    res.name = firstNonBlank(matches, 'name');
     res.visit_count = matches.filter(e => e.timeIn).length;
     res.on_site = matches.some(e => e.timeIn && !e.timeOut);
     res.vip = matches.some(e => e.vip);
-    res.brand = recent.brand || ''; res.model = recent.model || '';
+    res.brand = firstNonBlank(matches, 'brand'); res.model = firstNonBlank(matches, 'model');
     return res;
   }
   const mc = (typeof getManualCustomers === 'function')
@@ -12453,12 +12452,12 @@ function lookupCustomerByRego(rego) {
     const el = document.getElementById(id);
     if (el && !el.value && val) { el.value = val; markAutofilled(id); }
   }
-  fillIfEmpty('f-name', last.name);
-  fillIfEmpty('f-phone', last.phone);
-  fillIfEmpty('f-brand', last.brand);
+  fillIfEmpty('f-name', firstNonBlank(matches, 'name'));
+  fillIfEmpty('f-phone', firstNonBlank(matches, 'phone'));
+  fillIfEmpty('f-brand', firstNonBlank(matches, 'brand'));
   updateModelOptions();
-  fillIfEmpty('f-model', last.model);
-  fillIfEmpty('f-colour', last.colour);
+  fillIfEmpty('f-model', firstNonBlank(matches, 'model'));
+  fillIfEmpty('f-colour', firstNonBlank(matches, 'colour'));
   // Pre-tick VIP if this customer has ever been flagged as one.
   const isVip = matches.some(m => m.vip);
   const vipBox = document.getElementById('f-vip');
@@ -12483,8 +12482,9 @@ function lookupCustomerByRego(rego) {
               visitCount < 10 ? `Loyal customer · ${visitCount} previous visits` :
               `VIP customer · ${visitCount} previous visits`;
   document.getElementById('cb-title').textContent = badge;
+  const cbBrand = firstNonBlank(matches, 'brand'), cbModel = firstNonBlank(matches, 'model');
   document.getElementById('cb-name').textContent =
-    (last.name || 'Unknown name') + ' · ' + last.brand + (last.model ? ' ' + last.model : '');
+    (firstNonBlank(matches, 'name') || 'Unknown name') + (cbBrand ? ' · ' + cbBrand + (cbModel ? ' ' + cbModel : '') : '');
   document.getElementById('cb-info').textContent =
     `Last visit: ${daysSinceText} · ${visitCount} prior visit${visitCount !== 1 ? 's' : ''} · Lifetime: ${fmtMoney(totalSpent)} · Click for full detail`;
 
@@ -13439,6 +13439,17 @@ function loyaltyStatus(entry) {
 // ═══════════════════════════════════════════════════
 // Aggregates all entries into unique customers keyed by rego
 // ═══════════════════════════════════════════════════
+// Most visits carry every field, but a visit logged with gaps (e.g. a
+// backfilled/imported row missing phone or vehicle details) shouldn't blank
+// out data the customer already gave us on an older visit — so each field
+// falls back to the newest visit that actually has it, not just the latest.
+function firstNonBlank(visits, field) {
+  for (const v of visits) {
+    const val = v[field];
+    if (val != null && String(val).trim()) return val;
+  }
+  return '';
+}
 function buildCustomerList() {
   const groups = {};
   entries.forEach(e => {
@@ -13451,10 +13462,10 @@ function buildCustomerList() {
     const last = visits[0];
     return {
       rego: last.rego,
-      name: last.name || '',
-      phone: last.phone || '',
-      brand: last.brand || '',
-      model: last.model || '',
+      name: firstNonBlank(visits, 'name'),
+      phone: firstNonBlank(visits, 'phone'),
+      brand: firstNonBlank(visits, 'brand'),
+      model: firstNonBlank(visits, 'model'),
       visitCount: visits.length,
       lifetime: visits.reduce((s, e) => s + (e.totalFee || 0), 0),
       lastVisit: last.timeIn,
