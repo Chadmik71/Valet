@@ -12521,7 +12521,7 @@ function showWelcomePopup(last, visitCount, daysSince, totalSpent, allVisits) {
   }
 
   // Customer name with title (Mr./Ms.) — use what's stored, otherwise just first name
-  const nameRaw = (last.name || '').trim();
+  const nameRaw = (firstNonBlank(allVisits, 'name') || '').trim();
   let greeting;
   if (nameRaw) {
     // If name already has Mr/Ms/Mrs/Dr title, use as-is. Otherwise use full name.
@@ -12558,8 +12558,9 @@ function showWelcomePopup(last, visitCount, daysSince, totalSpent, allVisits) {
     prompts.push(`"Welcome back! Hope your last visit went well."`);
   }
 
-  if (last.brand) {
-    prompts.push(`"Same lovely ${last.brand}${last.model ? ' ' + last.model : ''} today?"`);
+  const wpBrand = firstNonBlank(allVisits, 'brand'), wpModel = firstNonBlank(allVisits, 'model');
+  if (wpBrand) {
+    prompts.push(`"Same lovely ${wpBrand}${wpModel ? ' ' + wpModel : ''} today?"`);
   }
 
   if (daysSince > 60) {
@@ -12605,8 +12606,9 @@ function showWelcomePopup(last, visitCount, daysSince, totalSpent, allVisits) {
     </div>
   `;
 
-  document.getElementById('welcome-vehicle').innerHTML = last.brand
-    ? `<strong>${arvEsc(last.brand)}${last.model ? ' ' + arvEsc(last.model) : ''}</strong>${last.colour ? ' · ' + arvEsc(last.colour) : ''} · <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(last.rego)}</span>`
+  const wpColour = firstNonBlank(allVisits, 'colour');
+  document.getElementById('welcome-vehicle').innerHTML = wpBrand
+    ? `<strong>${arvEsc(wpBrand)}${wpModel ? ' ' + arvEsc(wpModel) : ''}</strong>${wpColour ? ' · ' + arvEsc(wpColour) : ''} · <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(last.rego)}</span>`
     : `<span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(last.rego)}</span>`;
 
   // Escape each prompt — they embed customer name/brand/model/bay and free-text
@@ -13171,7 +13173,7 @@ function showCustomerDetail(regoArg) {
 
   // Other vehicles seen under the SAME phone number (one person, many cars).
   // The customer list is keyed by plate, so this surfaces a person's other cars.
-  const phoneDigits = (last.phone || '').replace(/\D/g, '');
+  const phoneDigits = (firstNonBlank(matches, 'phone') || '').replace(/\D/g, '');
   let otherCarsHtml = '';
   if (phoneDigits.length >= 8) {
     const curKey = normaliseRego(rego);
@@ -13208,8 +13210,11 @@ function showCustomerDetail(regoArg) {
     }
   }
 
+  const cdName = firstNonBlank(matches, 'name'), cdPhone = firstNonBlank(matches, 'phone'),
+        cdBrand = firstNonBlank(matches, 'brand'), cdModel = firstNonBlank(matches, 'model'),
+        cdColour = firstNonBlank(matches, 'colour');
   document.getElementById('customer-modal-title').textContent =
-    (last.name || 'Customer') + ' — ' + rego;
+    (cdName || 'Customer') + ' — ' + rego;
 
   document.getElementById('customer-modal-body').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
@@ -13237,9 +13242,9 @@ function showCustomerDetail(regoArg) {
         <button class="btn btn-secondary btn-sm" onclick="editCustomerByRego('${rego.replace(/'/g, "\\'")}')" title="Fix the name, phone or vehicle if it was entered wrong">Edit details</button>
       </div>
       <div style="line-height:1.7">
-        ${last.name ? '<strong>Name:</strong> ' + arvEsc(last.name) + '<br>' : ''}
-        ${last.phone ? '<strong>Phone:</strong> ' + arvEsc(last.phone) + '<br>' : ''}
-        <strong>Vehicle:</strong> ${arvEsc(last.brand)} ${arvEsc(last.model || '')} ${last.colour ? '· ' + arvEsc(last.colour) : ''}<br>
+        ${cdName ? '<strong>Name:</strong> ' + arvEsc(cdName) + '<br>' : ''}
+        ${cdPhone ? '<strong>Phone:</strong> ' + arvEsc(cdPhone) + '<br>' : ''}
+        <strong>Vehicle:</strong> ${arvEsc(cdBrand)} ${arvEsc(cdModel)} ${cdColour ? '· ' + arvEsc(cdColour) : ''}<br>
         <strong>Plate:</strong> <span style="font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(last.rego)}</span><br>
         ${curVisit ? '<strong>On site now:</strong> checked in ' + fmtTime(new Date(curVisit.timeIn)) + ' ' + relDayLabel(curVisit.timeIn) + (curVisit.bay ? ' · Bay ' + arvEsc(curVisit.bay) : '') + '<br>' : ''}
         <strong>First visit:</strong> ${fmtDate(new Date(first.timeIn))}<br>
@@ -13299,35 +13304,41 @@ function escAttr(s) {
 function editCustomerByRego(rego) {
   const matches = findCustomerByRego(rego);
   if (!matches) return;
-  const c = matches[0]; // most recent visit holds the current details
+  const c = matches[0]; // most recent visit — only used for the plate, which is invariant across the group
   const n = matches.length;
-  document.getElementById('customer-modal-title').textContent = 'Edit — ' + (c.name || rego);
+  // Every other field falls back across visits: pre-filling from the latest
+  // visit only (even if it's blank) risked staff hitting Save on an
+  // untouched form and erasing real data an OLDER visit had on file.
+  const eName = firstNonBlank(matches, 'name'), ePhone = firstNonBlank(matches, 'phone'),
+        eBrand = firstNonBlank(matches, 'brand'), eModel = firstNonBlank(matches, 'model'),
+        eColour = firstNonBlank(matches, 'colour');
+  document.getElementById('customer-modal-title').textContent = 'Edit — ' + (eName || rego);
   document.getElementById('customer-modal-body').innerHTML = `
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
       Fixes apply across all <b>${n}</b> visit${n !== 1 ? 's' : ''} for this car.
     </div>
     <div class="form-field" style="margin-bottom:10px">
       <label class="form-label">Customer Name</label>
-      <input type="text" id="cust-edit-name" class="form-input" maxlength="50" autocomplete="off" value="${escAttr(c.name)}">
+      <input type="text" id="cust-edit-name" class="form-input" maxlength="50" autocomplete="off" value="${escAttr(eName)}">
     </div>
     <div class="form-field" style="margin-bottom:10px">
       <label class="form-label">Mobile</label>
-      <input type="tel" id="cust-edit-phone" class="form-input" maxlength="20" autocomplete="off" placeholder="0412 345 678" value="${escAttr(c.phone)}">
+      <input type="tel" id="cust-edit-phone" class="form-input" maxlength="20" autocomplete="off" placeholder="0412 345 678" value="${escAttr(ePhone)}">
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <div class="form-field">
         <label class="form-label">Car Brand</label>
-        <input type="text" id="cust-edit-brand" class="form-input" list="brand-list" autocomplete="off" value="${escAttr(c.brand)}">
+        <input type="text" id="cust-edit-brand" class="form-input" list="brand-list" autocomplete="off" value="${escAttr(eBrand)}">
       </div>
       <div class="form-field">
         <label class="form-label">Model</label>
-        <input type="text" id="cust-edit-model" class="form-input" autocomplete="off" value="${escAttr(c.model)}">
+        <input type="text" id="cust-edit-model" class="form-input" autocomplete="off" value="${escAttr(eModel)}">
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-field">
         <label class="form-label">Colour</label>
-        <input type="text" id="cust-edit-colour" class="form-input" maxlength="20" autocomplete="off" value="${escAttr(c.colour)}">
+        <input type="text" id="cust-edit-colour" class="form-input" maxlength="20" autocomplete="off" value="${escAttr(eColour)}">
       </div>
       <div class="form-field">
         <label class="form-label">Plate</label>
