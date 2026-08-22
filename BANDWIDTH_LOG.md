@@ -473,3 +473,25 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
 No budget concern. Action item: confirm with the user whether 20 Aug's
 near-zero reading reflects a closed/no-shift day or an actual app-availability
 gap.
+
+## 2026-08-22 (later, routine "check bandwidth" ask): 21 Aug CLOSED at ~9.94MB (revised up from same-day estimate) — cumulative 1.521GB/250GB
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **21 Aug 2026 (closed, final): ~9.94MB total** — 9.202MB PostgREST (92.6%),
+  665.658KB Realtime (6.5%), 64.839KB Auth (0.6%), 24.188KB Functions (0.2%).
+  Up from the ~7.62MB same-day estimate logged earlier — consistent with the
+  known pattern of closed-day totals settling higher after the day rolls over
+  (e.g. 7 Aug's 403MB→484MB). Realtime's share (6.5%) continues in the same
+  low-single-digit-percent range as the last few checks — still just tens of
+  KB in absolute terms, not a concern.
+- **22 Aug 2026 (today):** not yet on the chart — too new to have populated a
+  bar, same <24h lag as every prior same-day check. A fair amount of activity
+  happened today (live customer check-ins, printer testing, several direct
+  SQL fixes) but none of it will show until the bar populates.
+- **Cumulative this cycle (06 Aug–22 Aug, chatswood-valet only): 1.521 GB /
+  250 GB (<1%).**
+
+No action needed — still healthy, well within budget. 20 Aug's near-zero
+reading from the entry above is still unexplained; worth asking the user
+about it separately if not already resolved.
