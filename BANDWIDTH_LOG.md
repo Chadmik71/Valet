@@ -495,3 +495,53 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
 No action needed — still healthy, well within budget. 20 Aug's near-zero
 reading from the entry above is still unexplained; worth asking the user
 about it separately if not already resolved.
+
+## 2026-08-23: 22 Aug CLOSED at ~18.34MB — Realtime's share keeps climbing (14.9%), still healthy
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **22 Aug 2026 (closed, final): ~18.34MB total** — 15.442MB PostgREST
+  (84.2%), 2.741MB Realtime (14.9%), 107.343KB Auth (0.6%), 47.15KB
+  Functions (0.3%). Well within the recent low-baseline range, but flagging:
+  Realtime's *share* has now climbed three checks running (6.5% on 21 Aug →
+  8.4% on 21 Aug same-day estimate → 14.9% here). Absolute bytes are still
+  small (2.74MB/day) so no budget concern, but if this keeps trending up
+  worth checking what's driving more Realtime traffic (more concurrent
+  devices/tabs open? more presence churn?).
+- **23 Aug 2026 (today):** not yet on the chart — too new to have populated
+  a bar, same <24h lag as every prior same-day check.
+- **Cumulative this cycle (06 Aug–23 Aug, chatswood-valet only): 1.54 GB /
+  250 GB (<1%).**
+
+No action needed — still healthy, well within budget. The Realtime-share
+creep is the only thing worth watching; not a problem yet.
+
+## 2026-08-26: 22 Aug CLOSED at ~18.67MB (Realtime share holding ~15%); 23 Aug partial shows a real Realtime spike — 11.5MB (41% of the day), cumulative 1.583GB/250GB
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **22 Aug 2026 (closed, final): ~18.67MB total** — 15.766MB PostgREST
+  (84.5%), 2.741MB Realtime (14.7%), 110.54KB Auth (0.6%), 49.652KB
+  Functions (0.3%). Matches the same-day estimate logged on 2026-08-23
+  almost exactly (18.34MB → 18.67MB) — no meaningful drift after closing.
+  Realtime's share (14.7%) is consistent with the last few checks, not a
+  further step up on its own.
+- **23 Aug 2026 (partial, still open — NOT closed): ~28.09MB so far** —
+  16.394MB PostgREST (58.4%), **11.513MB Realtime (41.0%)**, 97.924KB
+  Functions (0.3%), 89.114KB Auth (0.3%). This is the escalation the last
+  few entries were watching for: Realtime's *absolute* bytes jumped from
+  2.74MB (22 Aug closed) to 11.5MB in a partial day — over 4x — and its
+  *share* nearly tripled (14.7% → 41.0%). Still small in absolute terms
+  and nowhere near the 250GB budget, but this breaks the "just tens/low-
+  hundreds of KB, watch the share not the bytes" framing from the last
+  three checks. Worth a closed-day confirmation and, if it repeats, a look
+  at whether something is opening/reconnecting more Realtime channels than
+  usual (more concurrent devices/tabs, a flapping connection re-subscribing
+  repeatedly, etc.) — same category of question as the July/Aug-7 PostgREST
+  incident, just on the Realtime channel this time.
+- **Cumulative this cycle (06 Aug–26 Aug, chatswood-valet only): 1.583 GB /
+  250 GB (0.63%).** No budget concern.
+
+**Action item:** re-check once 23 Aug closes to get the final Realtime
+figure, and if the elevated Realtime share persists into 24-26 Aug, treat
+it as an actual investigation rather than a watch item.
