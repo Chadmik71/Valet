@@ -545,3 +545,22 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
 **Action item:** re-check once 23 Aug closes to get the final Realtime
 figure, and if the elevated Realtime share persists into 24-26 Aug, treat
 it as an actual investigation rather than a watch item.
+
+## 2026-08-31: 30 Aug CLOSED at ~21.16MB (Realtime back down to ~12.8% share); 31 Aug partial ~6.57MB, cumulative 1.636GB/250GB
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **30 Aug 2026 (closed, final): ~21.16MB total** — 18.319MB PostgREST
+  (86.6%), 2.718MB Realtime (12.8%), 75.643KB Auth (0.3%), 43.794KB
+  Functions (0.2%). Realtime's share is back down near the pre-23-Aug
+  baseline (12.8% vs the 41% spike flagged on 23 Aug), so that escalation
+  did not persist — looks like it was a one-off, not a trend.
+- **31 Aug 2026 (partial, still open — NOT closed): ~6.57MB so far** —
+  6.224MB PostgREST (94.8%), 280.787KB Realtime (4.2%), 53.413KB Auth
+  (0.8%), 12.573KB Functions (0.2%).
+- **Cumulative this cycle (06 Aug–31 Aug, chatswood-valet only): 1.636 GB /
+  250 GB (0.65%).** No budget concern.
+
+**Action item:** the 23 Aug Realtime spike (41% share) resolved on its own
+and hasn't recurred through 30 Aug — closing that watch item, no
+investigation needed unless it reappears.
