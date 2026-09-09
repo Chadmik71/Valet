@@ -3461,6 +3461,14 @@ function restoreNewEntryDraftIfAny() {
   }
 }
 function newEntryDraftTick() {
+  // Only act while New Entry is the screen actually on show. Without this
+  // guard, the safety-net interval below would run everywhere — including
+  // right after a fresh page load landing on Dashboard, or while a staff
+  // member is on a completely different tab — and its "no unsaved data"
+  // branch would immediately wipe out a draft that hasn't even been looked
+  // at yet, defeating the entire point of surviving a close/reopen.
+  const view = document.getElementById('view-new-entry');
+  if (!view || !view.classList.contains('active')) return;
   if (newEntryHasUnsavedData()) { armBackGuard(); saveNewEntryDraft(); }
   else { disarmBackGuard(); clearNewEntryDraft(); }
 }
