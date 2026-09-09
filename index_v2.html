@@ -2122,6 +2122,7 @@ body.dark-mode .scan-banner {
       <input type="date" id="report-to" class="form-input" onchange="renderReports()">
     </div>
     <button class="btn btn-secondary" onclick="setReportRange('today')">Today</button>
+    <button class="btn btn-secondary" onclick="setReportRange('yesterday')">Yesterday</button>
     <button class="btn btn-secondary" onclick="setReportRange(7)">Last 7 Days</button>
     <button class="btn btn-secondary" onclick="setReportRange('month')">This Month</button>
     <button class="btn btn-secondary" onclick="setReportRange('all')">All Time</button>
@@ -9281,6 +9282,13 @@ async function setReportRange(range) {
   let from;
   if (range === 'today') {
     from = to;
+  } else if (range === 'yesterday') {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    from = fmtDateISO(d);
+    document.getElementById('report-from').value = from;
+    document.getElementById('report-to').value = from;
+    renderReports();
+    return;
   } else if (range === 7 || range === 30) {
     const d = new Date(); d.setDate(d.getDate() - range + 1);
     from = fmtDateISO(d);
