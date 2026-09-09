@@ -2297,6 +2297,12 @@ body.dark-mode .scan-banner {
       </select>
     </div>
     <div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:10px">Every check-in, checkout, edit and setting change in this date range — who did what, and when.</div>
+
+    <div class="section-title" style="margin-bottom:10px">Staff Coverage</div>
+    <div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:14px">Each staff member's active window per day (first to last activity that day) and how many were online at once — approximate, since there's no explicit "logged out" event.</div>
+    <div id="rep-staff-coverage"><div class="empty">No activity in this range</div></div>
+
+    <div class="section-title" style="margin:26px 0 10px">Full Activity Log</div>
     <div id="rep-stafflog"><div class="empty">Loading…</div></div>
   </div>
 
@@ -10837,6 +10843,7 @@ function renderStaffLogTable() {
   if (!c) return;
   const filter = document.getElementById('stafflog-filter')?.value || '';
   const rows = filter ? staffLogRows.filter(r => r.user_name === filter) : staffLogRows;
+  renderStaffCoverage(rows);
   if (!rows.length) { c.innerHTML = '<div class="empty">No activity in this range</div>'; return; }
   const capNote = staffLogRows.length >= 1000
     ? '<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:8px">Showing the most recent 1000 events — narrow the date range to see everything.</div>' : '';
@@ -10853,6 +10860,107 @@ function renderStaffLogTable() {
     <thead><tr><th>When</th><th>Staff</th><th>Action</th><th>Details</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div>`;
+}
+
+// Staff Coverage: how many staff were using the app at once, and for how
+// long each one was on shift. There's no explicit "logged out" audit event
+// (most staff never sign out — see MOBILE_VIEWS), so a staff member's active
+// window per day is approximated as their FIRST activity to their LAST
+// activity that day; every hour in between counts as them being "online"
+// even if they didn't touch the screen for a stretch (they were presumably
+// out parking/retrieving a car, not actually gone).
+function computeStaffCoverage(rows) {
+  const byDay = {};
+  rows.forEach(r => {
+    if (!r.user_name || !r.created_at) return;
+    const t = new Date(r.created_at).getTime();
+    const day = localDateStr(r.created_at);
+    const dayBucket = byDay[day] || (byDay[day] = {});
+    const rec = dayBucket[r.user_name] || (dayBucket[r.user_name] = { user: r.user_name, start: t, end: t });
+    if (t < rec.start) rec.start = t;
+    if (t > rec.end) rec.end = t;
+  });
+  return Object.keys(byDay).sort().map(day => ({
+    day,
+    staff: Object.values(byDay[day]).sort((a, b) => a.start - b.start),
+  }));
+}
+// Count how many of a day's staff sessions overlap each hour (0–23).
+function staffHourlyConcurrency(staffSessions, dayStr) {
+  const dayStart = new Date(dayStr + 'T00:00:00').getTime();
+  const counts = new Array(24).fill(0);
+  for (let h = 0; h < 24; h++) {
+    const hStart = dayStart + h * 3600000, hEnd = hStart + 3600000;
+    counts[h] = staffSessions.filter(s => s.start < hEnd && s.end >= hStart).length;
+  }
+  return counts;
+}
+function fmtHM12(ms) {
+  return new Date(ms).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+}
+function renderStaffCoverage(rows) {
+  const el = document.getElementById('rep-staff-coverage');
+  if (!el) return;
+  if (!rows.length) { el.innerHTML = '<div class="empty">No activity in this range</div>'; return; }
+  const days = computeStaffCoverage(rows);
+  if (!days.length) { el.innerHTML = '<div class="empty">No activity in this range</div>'; return; }
+
+  // Headline: the single busiest moment across the whole range.
+  let peak = { count: 0, day: '', hour: 0 };
+  days.forEach(d => {
+    staffHourlyConcurrency(d.staff, d.day).forEach((c, h) => { if (c > peak.count) peak = { count: c, day: d.day, hour: h }; });
+  });
+  const peakCard = peak.count ? `<div style="background:var(--sandstone);padding:12px 14px;border-radius:6px;border-left:3px solid var(--bronze);margin-bottom:20px;display:inline-block;min-width:220px">
+      <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze);font-weight:600;margin-bottom:5px">Peak overlap</div>
+      <div style="font-size:15px;font-weight:bold;color:var(--maroon)">${peak.count} staff at once</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${fmtDate(new Date(peak.day + 'T00:00:00'))} around ${hourLabel(peak.hour)}</div>
+    </div>` : '';
+
+  el.innerHTML = peakCard + days.map(renderStaffCoverageDay).join('');
+}
+function renderStaffCoverageDay(d) {
+  const dayStart = new Date(d.day + 'T00:00:00').getTime();
+  const hc = staffHourlyConcurrency(d.staff, d.day);
+  const maxC = Math.max(1, ...hc);
+  const wd = WEEKDAY_NAMES[new Date(d.day + 'T00:00:00').getDay()];
+
+  const ganttRows = d.staff.map(s => {
+    const leftPct = Math.min(99.4, ((s.start - dayStart) / 86400000) * 100);
+    const widthPct = Math.max(0.6, ((s.end - s.start) / 86400000) * 100);
+    const durMs = s.end - s.start;
+    const timeLbl = `${fmtHM12(s.start)} – ${fmtHM12(s.end)} · ${durMs > 0 ? fmtDuration(durMs) : '<1m'}`;
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="width:76px;flex-shrink:0;font-size:12px;font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.user}">${s.user}</div>
+      <div style="flex:1;position:relative;height:20px;background:var(--sandstone);border-radius:4px;min-width:80px">
+        <div title="${s.user}: ${timeLbl}" style="position:absolute;top:2px;left:${leftPct}%;width:${widthPct}%;height:16px;background:linear-gradient(90deg,var(--bronze),var(--bronze-light));border-radius:4px"></div>
+      </div>
+      <div style="width:170px;flex-shrink:0;font-size:11px;color:var(--text-muted);font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${timeLbl}</div>
+    </div>`;
+  }).join('');
+
+  const first = hc.findIndex(v => v > 0);
+  let barsHTML = '';
+  if (first >= 0) {
+    let last = first; hc.forEach((v, h) => { if (v > 0) last = h; });
+    const BAR_MAX = 90;
+    let bars = `<div style="display:flex;align-items:flex-end;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:8px 2px 2px;min-height:${BAR_MAX + 34}px">`;
+    for (let h = first; h <= last; h++) {
+      const hgt = Math.max(2, Math.round((hc[h] / maxC) * BAR_MAX));
+      bars += `<div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:30px">
+        <div style="font-size:11px;font-weight:bold;color:var(--maroon)">${hc[h]}</div>
+        <div title="${hourLabel(h)}: ${hc[h]} staff online" style="width:14px;height:${hgt}px;background:linear-gradient(180deg,var(--maroon),var(--maroon-light));border-radius:3px 3px 0 0"></div>
+        <div style="font-size:10px;color:var(--text-muted)">${hourLabel(h)}</div>
+      </div>`;
+    }
+    bars += '</div>';
+    barsHTML = `<div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-top:6px">Staff online per hour</div>` + bars;
+  }
+
+  return `<div style="margin-bottom:28px">
+    <div style="font-size:13px;font-weight:700;color:var(--maroon);margin-bottom:10px">${wd} ${d.day}</div>
+    ${ganttRows}
+    ${barsHTML}
+  </div>`;
 }
 
 // Customer Stay & Pricing Tiers: bucket completed stays by the fee tiers so you
