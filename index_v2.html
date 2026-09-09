@@ -3446,19 +3446,25 @@ function loadNewEntryDraft() {
 function restoreNewEntryDraftIfAny() {
   const draft = loadNewEntryDraft();
   if (!draft || !draft.fields) return;
+  // Judge "is this worth restoring" from the SAVED draft's own fields, not
+  // newEntryHasUnsavedData() — that also requires New Entry to be the
+  // currently *visible* view, which it isn't yet here: initializeUI() calls
+  // prepareNewEntry() up front to pre-render every tab, regardless of which
+  // one actually ends up on screen. Checking the live view state at this
+  // point always read "not visible" and deleted the draft it had just
+  // repopulated, before the staff member ever saw it.
+  const coreHasData = ['f-rego', 'f-name', 'f-phone', 'f-brand', 'f-model', 'f-colour']
+    .some(id => (draft.fields[id] || '').trim());
+  if (!coreHasData) { clearNewEntryDraft(); return; }   // stale/empty draft — nothing worth restoring
   Object.keys(draft.fields).forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     if (el.type === 'checkbox') el.checked = !!draft.fields[id];
     else el.value = draft.fields[id] || '';
   });
-  if (newEntryHasUnsavedData()) {
-    armBackGuard();
-    const banner = document.getElementById('draft-restored-banner');
-    if (banner) banner.style.display = '';
-  } else {
-    clearNewEntryDraft();   // stale/empty draft — nothing worth restoring
-  }
+  armBackGuard();
+  const banner = document.getElementById('draft-restored-banner');
+  if (banner) banner.style.display = '';
 }
 function newEntryDraftTick() {
   // Only act while New Entry is the screen actually on show. Without this
