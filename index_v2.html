@@ -2959,9 +2959,17 @@ try {
 // ═══════════════════════════════════════════════════
 const STORAGE_KEY = 'chatswood_valet_data_v1';
 const SETTINGS_KEY = 'chatswood_valet_settings_v1';
+const RECENT_OLDEST_KEY = 'chatswood_valet_recent_oldest_v1';
 
 let entries = [];
 let settings = { prefix: 'A-', nextNum: 1 };
+// How far back the "recent 2000" full-reload batch actually reaches — kept
+// separate from scanning `entries` itself, because cloudLoadAllEntries() also
+// pulls in any still-active (not checked out) car regardless of age, so the
+// oldest row in `entries` no longer means "we hold contiguous history back to
+// here" (see cloudLoadAllEntries). Persisted so it's correct immediately on
+// reload too, before the first fresh cloud load of the new session completes.
+let recentBatchOldestTimeIn = null;
 
 // ═══════════════════════════════════════════════════
 // DEMO / PITCH MODE  (add ?demo=1 to the URL)
@@ -3283,6 +3291,10 @@ function loadData() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) settings = { ...settings, ...JSON.parse(raw) };
+  } catch(e) {}
+  try {
+    const raw = localStorage.getItem(RECENT_OLDEST_KEY);
+    if (raw) recentBatchOldestTimeIn = raw;
   } catch(e) {}
 }
 
@@ -12818,9 +12830,21 @@ function lookupCustomerByRego(rego) {
       fill('f-model', car.model);
       const vipBox = document.getElementById('f-vip'); if (vipBox && mc.vip) vipBox.checked = true;
     }
+    // Nothing in the local (recent-2000) cache — an infrequent customer's
+    // last visit can fall outside that window. Check the full cloud history
+    // before treating them as brand new.
+    lookupCustomerByRegoCloud(rego);
     return;
   }
 
+  applyCustomerMatch(matches, rego);
+}
+
+// Renders the "returning customer" UI (autofill, banner, welcome popup) from
+// a resolved, newest-first set of a customer's visits — used for both a
+// local-cache hit and a cloud-fallback hit, so they behave identically.
+function applyCustomerMatch(matches, rego) {
+  const banner = document.getElementById('customer-banner');
   // Most recent visit
   const last = matches[0];
   const visitCount = matches.length;
@@ -12876,8 +12900,31 @@ function lookupCustomerByRego(rego) {
   banner.style.display = 'block';
   banner.dataset.rego = rego;
 
-  // SHOW PROMINENT WELCOME POPUP 
+  // SHOW PROMINENT WELCOME POPUP
   showWelcomePopup(last, visitCount, daysSince, totalSpent, matches);
+}
+
+// Fallback when the local (recent-2000) cache has nothing for this plate —
+// an infrequent customer's last visit can be older than that window. Queries
+// the FULL history via a server-side RPC (which normalises the rego the same
+// way the client does) and, if a real match comes back, applies it exactly
+// like a local hit would. Token-guarded so a slow/late response can't
+// clobber whatever the staff member has typed into the field since.
+let regoCloudLookupToken = 0;
+async function lookupCustomerByRegoCloud(rego) {
+  if (DEMO_MODE || !supa) return;
+  const target = normaliseRego(rego);
+  if (!target || target.length < 3) return;
+  const myToken = ++regoCloudLookupToken;
+  try {
+    const { data, error } = await supa.rpc('find_entries_by_rego', { p_rego: rego });
+    if (error || !data || !data.length) return;
+    if (myToken !== regoCloudLookupToken) return;       // a newer lookup superseded this one
+    const el = document.getElementById('f-rego');
+    if (!el || normaliseRego(el.value) !== target) return;   // rego field has moved on
+    const matches = data.map(dbToJs).sort((a, b) => new Date(b.timeIn) - new Date(a.timeIn));
+    applyCustomerMatch(matches, rego);
+  } catch (e) { /* best-effort — a failed lookup just means no autofill, not a broken form */ }
 }
 
 function showWelcomePopup(last, visitCount, daysSince, totalSpent, allVisits) {
@@ -14397,13 +14444,29 @@ async function uploadEntryPhoto(dataUrl, path) {
 async function cloudLoadAllEntries() {
   // DEMO/PITCH MODE: never touch the real customer table — return samples.
   if (DEMO_MODE) return generateDemoEntries();
-  const { data, error } = await supa
-    .from('entries')
-    .select('*')
-    .order('time_in', { ascending: false })
-    .limit(2000);
-  if (error) throw error;
-  return (data || []).map(dbToJs);
+  const [recentRes, activeRes] = await Promise.all([
+    supa.from('entries').select('*').order('time_in', { ascending: false }).limit(2000),
+    // Any car still on-site (checked in, not yet checked out) must never
+    // silently drop off the board just because enough newer cars pushed it
+    // out of the "recent 2000" window — that's a real physical car staff
+    // could lose track of. Cheap: bounded by parking capacity, not by total
+    // historical volume.
+    supa.from('entries').select('*').is('time_out', null),
+  ]);
+  if (recentRes.error) throw recentRes.error;
+  if (activeRes.error) throw activeRes.error;
+  const recent = recentRes.data || [];
+  recentBatchOldestTimeIn = recent.length
+    ? recent.reduce((a, r) => (r.time_in < a ? r.time_in : a), recent[0].time_in)
+    : null;
+  try {
+    if (recentBatchOldestTimeIn) localStorage.setItem(RECENT_OLDEST_KEY, recentBatchOldestTimeIn);
+    else localStorage.removeItem(RECENT_OLDEST_KEY);
+  } catch (e) {}
+  const merged = new Map();
+  recent.forEach(r => merged.set(r.id, r));
+  (activeRes.data || []).forEach(r => merged.set(r.id, r));
+  return Array.from(merged.values()).map(dbToJs);
 }
 
 // Incremental reconcile used by the routine 60s poll. Pulls ONLY rows whose
@@ -14487,16 +14550,19 @@ async function lightFullReconcile() {
   return changed;
 }
 
-// The exact boundary of what's guaranteed complete in the local (possibly-
-// truncated) `entries` array: full reloads (cloudLoadAllEntries, above) are
-// capped at the most recent 2000 rows, and each full reload REPLACES `entries`
-// wholesale (see loadFromCloud) rather than merging with older history. So
-// everything from now back to this oldest-held timeIn is complete; anything
-// older is silently absent once the table exceeds 2000 rows. Returns an ISO
-// timeIn string, or null when entries is empty.
+// The exact boundary of what's guaranteed COMPLETE (contiguous, no gaps) in
+// the local `entries` array: full reloads (cloudLoadAllEntries, above) cap
+// the general history batch at the most recent 2000 rows, and each full
+// reload REPLACES `entries` wholesale (see loadFromCloud) rather than merging
+// with older history. So everything from now back to this timestamp is
+// complete; anything older is silently absent once the table exceeds 2000
+// rows — EXCEPT stray still-active cars, which cloudLoadAllEntries() also
+// pulls in regardless of age, so scanning `entries` itself for "oldest" would
+// wrongly report full coverage back to one old active row when there's
+// really a gap in between. Use the tracked recent-batch boundary instead.
+// Returns an ISO timeIn string, or null when nothing's loaded yet.
 function oldestLocalTimeIn() {
-  if (!entries.length) return null;
-  return entries.reduce((a, e) => (e.timeIn < a ? e.timeIn : a), entries[0].timeIn);
+  return recentBatchOldestTimeIn;
 }
 
 // Fetch entries directly from Supabase for an arbitrary date range, paginated —
