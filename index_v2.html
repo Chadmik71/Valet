@@ -3354,13 +3354,31 @@ async function doCloudSync() {
   }
 }
 
-// Warn the user if they try to leave/refresh while there are unsaved cloud writes
+// True while the New Entry form is on screen with car/customer details typed
+// in but not yet saved (Save Entry not pressed) — the scenario that prompted
+// this: a staff member mid-check-in accidentally closed the app/tab on their
+// phone and lost everything they'd typed for that customer.
+function newEntryHasUnsavedData() {
+  const view = document.getElementById('view-new-entry');
+  if (!view || !view.classList.contains('active')) return false;
+  return ['f-rego', 'f-name', 'f-phone', 'f-brand', 'f-model', 'f-colour']
+    .some(id => (document.getElementById(id)?.value || '').trim());
+}
+
+// Warn the user if they try to leave/refresh while there are unsaved cloud
+// writes, OR while New Entry has typed-but-unsaved car/customer details.
+// Note: mobile browsers/PWAs don't always honour this (a hard OS-level kill
+// of the app can't be intercepted by page JS) — it catches the common case
+// of closing the tab/browser normally, not a forced task-switcher kill.
 window.addEventListener('beforeunload', (e) => {
   const pending = entriesSyncQueue.size + entriesDeleteQueue.size;
-  if (pending > 0 || isCloudSyncing) {
+  const unsavedEntry = newEntryHasUnsavedData();
+  if (pending > 0 || isCloudSyncing || unsavedEntry) {
     // This forces the browser to show a "Are you sure?" dialog
     e.preventDefault();
-    e.returnValue = 'Changes are still saving to the cloud. Wait a moment before refreshing.';
+    e.returnValue = unsavedEntry
+      ? 'You have unsaved car/customer details on this screen. Leave without saving?'
+      : 'Changes are still saving to the cloud. Wait a moment before refreshing.';
     return e.returnValue;
   }
 });
