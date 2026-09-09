@@ -14614,14 +14614,24 @@ async function entriesForRange(fromDateStr, toDateStr) {
 // ─── Keep the Supabase auth session alive ───
 // The `entries` table is RLS-gated to the `authenticated` role (no anon access),
 // so a write only lands if this browser holds a live Supabase JWT. That JWT lasts
-// ~1h; supabase-js auto-refreshes it, BUT every device shares ONE dashboard
-// account and Supabase rotates refresh tokens — so one device refreshing can
-// invalidate another's token, silently dropping it to anon. When that happens the
-// app still shows "logged in" (that's our own 24h valet_session) yet every
-// check-in is rejected (401) and lives only in local storage → the car never
-// syncs and other staff never see it. This heals that: verify the JWT, and if
-// it's dead, re-mint a fresh session server-side using our device token (which
-// survives rotation because the shared credential lives on the server).
+// ~1h; supabase-js auto-refreshes it in the background, but the refresh can still
+// fail (token expired after being closed a long while, a reload landing before
+// the client re-hydrates, etc). If that happens the app still shows "logged in"
+// (that's our own 24h valet_session) yet every check-in is rejected (401) and
+// lives only in local storage → the car never syncs and other staff never see it.
+// This heals that: verify the JWT, and if it's dead, re-mint a fresh session
+// server-side using our device token.
+//
+// (2026-09-09: this used to be a much more common failure — every device shared
+// ONE dashboard Supabase Auth account, and Supabase rotates refresh tokens on
+// every use, so one device refreshing could silently invalidate every OTHER
+// device's session out from under them. Fixed at the root: `staff-auth`'s
+// login/refresh actions now mint each device its OWN dedicated Supabase Auth
+// identity (deterministically derived from its device token), so two devices
+// can no longer collide — they're different auth.users rows with independent
+// refresh-token chains. This healing path stays as a general safety net for the
+// ordinary single-device causes above, which were always possible independent
+// of the shared-account issue.)
 let _authHealInFlight = null;
 async function ensureAuthSession() {
   if (DEMO_MODE) return true;
