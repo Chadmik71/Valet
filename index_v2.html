@@ -1424,6 +1424,13 @@ body.dark-mode .scan-banner {
       <div class="section-title">Log New Car</div>
     </div>
 
+    <div id="draft-restored-banner" style="display:none;background:#fdf6e3;border-left:4px solid var(--bronze);padding:12px 14px;border-radius:4px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-size:13px;color:var(--text)">↺ Restored unsaved details from before this screen closed — check them over, then Save.</div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="clearNewEntryDraft();resetForm();document.getElementById('draft-restored-banner').style.display='none';">Discard draft</button>
+      </div>
+    </div>
+
     <div id="customer-banner" style="display:none;background:linear-gradient(90deg,#faf9f7,#fafafa);border-left:4px solid var(--bronze);padding:12px 14px;border-radius:4px;margin-bottom:16px;cursor:pointer" onclick="showCustomerDetail()">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div style="flex:1">
@@ -1714,7 +1721,7 @@ body.dark-mode .scan-banner {
 
     <div class="btn-row" style="margin-top:18px">
       <button class="btn btn-primary btn-save-green" onclick="saveEntry()">✓ Save Entry</button>
-      <button class="btn btn-secondary" onclick="resetForm()">↺ Clear</button>
+      <button class="btn btn-secondary" onclick="clearNewEntryDraft();resetForm();">↺ Clear</button>
       <span id="save-msg" style="font-size:13px;color:var(--green);font-weight:600;display:none">✓ Entry saved!</span>
     </div>
   </div>
@@ -3410,10 +3417,65 @@ window.addEventListener('popstate', () => {
   // No unsaved data (or staff confirmed discard): let it go — the next back
   // press exits normally since the guard entry is now spent.
 });
+// ─── New Entry draft autosave ───
+// Neither guard above catches everything: iOS Safari largely ignores
+// `beforeunload`, and no page JS can intercept a hard kill (swiping the app
+// away in the phone's task switcher). The only close-method-agnostic fix is
+// to autosave what's typed and hand it back next time New Entry opens.
+const NEW_ENTRY_DRAFT_KEY = 'valet_new_entry_draft';
+const NEW_ENTRY_DRAFT_FIELD_IDS = ['f-rego', 'f-brand', 'f-model', 'f-name', 'f-phone', 'f-colour', 'f-bay', 'f-notes', 'f-shop', 'f-shop-cover', 'f-wash-service', 'f-wash-size'];
+function newEntryDraftSnapshot() {
+  const fields = {};
+  NEW_ENTRY_DRAFT_FIELD_IDS.forEach(id => { const el = document.getElementById(id); if (el) fields[id] = el.value; });
+  const vip = document.getElementById('f-vip'); if (vip) fields['f-vip'] = vip.checked;
+  return fields;
+}
+function saveNewEntryDraft() {
+  try { localStorage.setItem(NEW_ENTRY_DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), fields: newEntryDraftSnapshot() })); } catch (e) {}
+}
+function clearNewEntryDraft() {
+  try { localStorage.removeItem(NEW_ENTRY_DRAFT_KEY); } catch (e) {}
+  const banner = document.getElementById('draft-restored-banner');
+  if (banner) banner.style.display = 'none';
+}
+function loadNewEntryDraft() {
+  try { const raw = localStorage.getItem(NEW_ENTRY_DRAFT_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+// Repopulates the (already-blank, just-reset) New Entry form from a saved
+// draft, if one exists and still has something worth keeping.
+function restoreNewEntryDraftIfAny() {
+  const draft = loadNewEntryDraft();
+  if (!draft || !draft.fields) return;
+  Object.keys(draft.fields).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!draft.fields[id];
+    else el.value = draft.fields[id] || '';
+  });
+  if (newEntryHasUnsavedData()) {
+    armBackGuard();
+    const banner = document.getElementById('draft-restored-banner');
+    if (banner) banner.style.display = '';
+  } else {
+    clearNewEntryDraft();   // stale/empty draft — nothing worth restoring
+  }
+}
+function newEntryDraftTick() {
+  if (newEntryHasUnsavedData()) { armBackGuard(); saveNewEntryDraft(); }
+  else { disarmBackGuard(); clearNewEntryDraft(); }
+}
 document.addEventListener('input', (e) => {
-  if (!['f-rego', 'f-name', 'f-phone', 'f-brand', 'f-model', 'f-colour'].includes(e.target?.id)) return;
-  if (newEntryHasUnsavedData()) armBackGuard(); else disarmBackGuard();
+  if (!NEW_ENTRY_DRAFT_FIELD_IDS.includes(e.target?.id)) return;
+  newEntryDraftTick();
 });
+document.addEventListener('change', (e) => {
+  if (!NEW_ENTRY_DRAFT_FIELD_IDS.includes(e.target?.id) && e.target?.id !== 'f-vip') return;
+  newEntryDraftTick();
+});
+// Safety net for fields that get filled programmatically rather than typed
+// (ANPR plate-scan autofill, "Check in" from a driveway arrival) — those
+// don't dispatch input/change events, so nothing above would catch them.
+setInterval(newEntryDraftTick, 4000);
 
 async function saveSettingsToStorage(immediate) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -3740,6 +3802,10 @@ function prepareNewEntry() {
   }
   // Draw the (empty) damage diagram for this fresh entry
   renderDamageMarkers();
+  // Bring back anything a staff member had typed here before the screen
+  // closed unsaved (must run after the shop dropdown above is populated,
+  // since setting a <select>'s value before its <option>s exist is a no-op).
+  try { restoreNewEntryDraftIfAny(); } catch (e) {}
 }
 
 function toggleManualTicket() {
@@ -4129,6 +4195,7 @@ function saveEntry() {
     printAndTrack(entry);   // marks + prints; un-marks on failure so a failed tag retries
   }
 
+  clearNewEntryDraft();
   resetForm();
   // Bring the fresh New Entry page back up so staff clearly see a clean form
   // ready for the next car. The form is long (photo + damage diagram), so the
@@ -4660,6 +4727,8 @@ function resetForm() {
   const washHint = document.getElementById('f-wash-hint'); if (washHint) washHint.textContent = '';
   hideCarWashFields();   // collapse the car-wash section back down for the next car
   document.getElementById('customer-banner').style.display = 'none';
+  const draftBanner = document.getElementById('draft-restored-banner');
+  if (draftBanner) draftBanner.style.display = 'none';
   const aiHint = document.getElementById('ai-fill-hint');
   if (aiHint) aiHint.style.display = 'none';
   clearAllAutofillMarks();
@@ -6698,7 +6767,13 @@ function checkInFromArrival(btn){
   const row = (btn && btn.closest) ? btn.closest('.arow') : null;
   const plate = row ? (row.getAttribute('data-plate') || '') : (typeof btn === 'string' ? btn : '');
   if (!plate) return;
-  showView('new-entry');          // navigates + prepares ticket/time
+  showView('new-entry');          // navigates + prepares ticket/time (also restores any saved draft)
+  // Don't silently blow away a staff member's unsaved in-progress car just
+  // because a different arrival came through the driveway feed.
+  if (newEntryHasUnsavedData() && !confirm('New Entry already has an unsaved car on it. Discard it and check in this arrival instead?')) {
+    return;
+  }
+  clearNewEntryDraft();
   try { resetForm(); } catch (e) {}
   const el = document.getElementById('f-rego');
   if (el) el.value = plate.toUpperCase();
