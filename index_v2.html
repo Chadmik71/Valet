@@ -3383,6 +3383,38 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 
+// ─── Android back-button guard ───
+// `beforeunload` is unreliable on Android Chrome specifically for the
+// hardware/gesture BACK button: with no in-page history, back exits the tab
+// immediately and silently — no confirm dialog, nothing shown, the exact
+// "app just closes" report from a staff member losing a mid-check-in car.
+// Fix: push one extra dummy history entry the moment there's unsaved New
+// Entry data, so the FIRST back press fires `popstate` (staying on the same
+// page) instead of exiting outright — giving us the chance to confirm().
+let backGuardArmed = false;
+function armBackGuard() {
+  if (backGuardArmed) return;
+  try { history.pushState({ valetBackGuard: true }, ''); backGuardArmed = true; } catch (e) {}
+}
+function disarmBackGuard() {
+  if (!backGuardArmed) return;
+  backGuardArmed = false;
+  try { history.back(); } catch (e) {}
+}
+window.addEventListener('popstate', () => {
+  backGuardArmed = false;
+  if (newEntryHasUnsavedData()) {
+    const leave = confirm('You have unsaved car/customer details on this screen. Leave without saving?');
+    if (!leave) { armBackGuard(); return; }
+  }
+  // No unsaved data (or staff confirmed discard): let it go — the next back
+  // press exits normally since the guard entry is now spent.
+});
+document.addEventListener('input', (e) => {
+  if (!['f-rego', 'f-name', 'f-phone', 'f-brand', 'f-model', 'f-colour'].includes(e.target?.id)) return;
+  if (newEntryHasUnsavedData()) armBackGuard(); else disarmBackGuard();
+});
+
 async function saveSettingsToStorage(immediate) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   doAutoSave();
@@ -4615,6 +4647,7 @@ function quickToast(text) {
 }
 
 function resetForm() {
+  if (typeof disarmBackGuard === 'function') disarmBackGuard();
   ['f-bay','f-model','f-colour','f-rego','f-name','f-phone','f-notes'].forEach(id => {
     document.getElementById(id).value = '';
   });
