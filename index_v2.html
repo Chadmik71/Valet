@@ -2960,6 +2960,7 @@ try {
 const STORAGE_KEY = 'chatswood_valet_data_v1';
 const SETTINGS_KEY = 'chatswood_valet_settings_v1';
 const RECENT_OLDEST_KEY = 'chatswood_valet_recent_oldest_v1';
+const CLOUD_SETTINGS_CACHE_KEY = 'chatswood_valet_cloud_settings_v1';
 
 let entries = [];
 let settings = { prefix: 'A-', nextNum: 1 };
@@ -3295,6 +3296,10 @@ function loadData() {
   try {
     const raw = localStorage.getItem(RECENT_OLDEST_KEY);
     if (raw) recentBatchOldestTimeIn = raw;
+  } catch(e) {}
+  if (!DEMO_MODE) try {
+    const raw = localStorage.getItem(CLOUD_SETTINGS_CACHE_KEY);
+    if (raw) cloudSettings = JSON.parse(raw);
   } catch(e) {}
 }
 
@@ -14294,6 +14299,17 @@ let realtimeReconnectTimer = null; // backoff timer for re-subscribing a dropped
 let realtimeReconnectDelay = 2000; // grows on repeated failures, reset on SUBSCRIBED
 let realtimeGen = 0;               // bumped each subscribe; stale channel callbacks ignore themselves
 let cloudSettings = {}; // Settings synced from cloud
+// cloudSettings starts empty every page load and only gets populated once the
+// async cloud fetch resolves — but the FIRST renderDashboard() call happens
+// synchronously before that, so getDashLayout() fell back to the full default
+// widget set every single refresh, even for a device that had customized its
+// layout: staff would see every default widget flash on screen for a second
+// before the real (trimmed) layout arrived and replaced it. Caching the last-
+// known settings to localStorage means the very first render already has the
+// real layout, so there's nothing to flash away.
+function cacheCloudSettings() {
+  try { localStorage.setItem(CLOUD_SETTINGS_CACHE_KEY, JSON.stringify(cloudSettings)); } catch (e) {}
+}
 let pendingWrites = []; // Offline queue
 // Print Station de-dupe. We remember, per car, the exact tag CONTENT last
 // printed on THIS device (bay·ticket·plate — everything that appears on the
@@ -14543,6 +14559,7 @@ async function lightFullReconcile() {
   try {
     const [freshSettings, staff] = await Promise.all([cloudLoadSettings(), cloudListStaff().catch(() => null)]);
     cloudSettings = freshSettings;
+    cacheCloudSettings();
     if (staff) staffRoster = staff;
     settings.prefix = cloudSettings.ticket_prefix || settings.prefix || 'A-';
     if (cloudSettings.next_ticket_num !== undefined && cloudSettings.next_ticket_num !== null) settings.nextNum = cloudSettings.next_ticket_num;
@@ -15921,6 +15938,7 @@ async function loadFromCloud(silent) {
       cloudListStaff().catch(() => null),
     ]);
     cloudSettings = freshSettings;
+    cacheCloudSettings();
     // BACKSTOP against a board wipe: an empty entries read while we still hold
     // cars locally is almost always a BLOCKED read, not a genuinely empty table.
     // `entries` is RLS-gated to `authenticated`, so an anon/dead-session read
