@@ -1342,6 +1342,7 @@ body.dark-mode .scan-banner {
   <button class="flyout-item" data-group="monthly" onclick="goReport('monthly')">Monthly Calendar</button>
   <button class="flyout-item" data-group="payments" onclick="goReport('payments')">Payments</button>
   <button class="flyout-item" data-group="staff" onclick="goReport('staff')">Staff Performance</button>
+  <button class="flyout-item" data-group="stafflog" onclick="goReport('stafflog')">Staff Log</button>
   <button class="flyout-item" data-group="customers" onclick="goReport('customers')">Customers</button>
   <button class="flyout-item ff-bags" data-group="bagstaff" onclick="goReport('bagstaff')">Bag Jobs by Staff</button>
   <button class="flyout-item" data-group="feedback" onclick="goReport('feedback')">Customer Feedback</button>
@@ -2279,6 +2280,17 @@ body.dark-mode .scan-banner {
       <div class="section-title">Staff Performance</div>
     </div>
     <div id="rep-staff"><div class="empty">No cars in this range</div></div>
+  </div>
+
+  <div class="section rep-section" data-repgroup="stafflog">
+    <div class="section-header">
+      <div class="section-title">Staff Activity Log</div>
+      <select id="stafflog-filter" class="form-input" style="width:auto" onchange="renderStaffLogTable()">
+        <option value="">All Staff</option>
+      </select>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:10px">Every check-in, checkout, edit and setting change in this date range — who did what, and when.</div>
+    <div id="rep-stafflog"><div class="empty">Loading…</div></div>
   </div>
 
   <div class="section rep-section" data-repgroup="customers">
@@ -9791,6 +9803,10 @@ function renderReports() {
   renderMgmtSummary(filtered);
   renderPickupSLA(filtered);
   renderTenantValidations(filtered);
+  // Staff Log needs a live Supabase query (not local `entries`), so only
+  // refresh it when that tab is actually open — avoid a DB hit on every
+  // date-range click elsewhere in Reports.
+  if (document.querySelector('#view-reports .rep-section[data-repgroup="stafflog"].show')) renderStaffLog();
 }
 
 // ═══════════════════════════════════════════════════
@@ -10587,6 +10603,118 @@ function renderStaff(filtered) {
   c.innerHTML = parkedBars + outBars;
 }
 
+// Staff Activity Log: every audit_log row (login, check-in/out, edits, bag
+// jobs, settings changes, staff management…) in the current report date
+// range — a full "who did what, when" trail per staff member. Pulls straight
+// from Supabase (audit_log is never mirrored into the local `entries`
+// array), so it's fetched lazily only while this tab is open.
+let staffLogRows = [];
+let staffLogRange = null;
+const STAFFLOG_LABELS = {
+  login: 'Logged in', create: 'Checked in a car', checkout: 'Checked out a car',
+  undo_checkout: 'Undid a checkout', delete: 'Deleted an entry', edit: 'Edited an entry',
+  edit_time: 'Edited check-in/out time', edit_details: 'Edited car details',
+  edit_customer: 'Edited customer details', return_damage: 'Logged return damage',
+  mark_note: 'Added damage marks/notes', feature_toggle: 'Toggled a feature',
+  set_capacity: 'Changed car park capacity', set_overstay: 'Changed overstay threshold',
+  set_loyalty: 'Changed loyalty settings', set_wash_cost: 'Changed car wash pricing',
+  plate_alias: 'Added a plate alias', car_wash: 'Added a car wash',
+  car_wash_status: 'Updated car wash status', car_wash_remove: 'Removed a car wash',
+  cancel_pickup: 'Cancelled a pickup request', pickup_status: 'Updated pickup status',
+  request_pickup: 'Requested a pickup', lost_ticket_release: 'Released a lost-ticket car',
+  bag_staff: 'Toggled bag-alert staff', shop_settle: 'Settled a shop account',
+  bag_request: 'Requested a bag pickup', bag_collecting: 'Marked bags as collecting',
+  bag_assign: 'Assigned a bag job', bag_reassign: 'Reassigned a bag job',
+  bag_unassign: 'Unassigned a bag job', bag_in_car: 'Marked bags in car',
+  bag_done: 'Completed a bag job', bag_cancel: 'Cancelled a bag job',
+  bag_shop_photo: 'Uploaded a shop photo', update_staff: 'Updated a staff account',
+  create_staff: 'Created a staff account', enable_staff: 'Enabled a staff account',
+  disable_staff: 'Disabled a staff account', change_pin: 'Changed access PIN',
+};
+function staffLogDetailText(row) {
+  const d = row.details || {};
+  const bits = [];
+  if (d.ticket) bits.push('#' + d.ticket);
+  if (d.rego) bits.push(d.rego);
+  if (d.name) bits.push(d.name);
+  if (d.displayName) bits.push(d.displayName);
+  if (d.job) bits.push('job ' + d.job);
+  if (d.location) bits.push(d.location);
+  if (d.count != null) bits.push(d.count + 'x');
+  if (d.total != null) bits.push(fmtMoney(d.total));
+  if (d.tips) bits.push(fmtMoney(d.tips) + ' tips');
+  if (d.status) bits.push(d.status);
+  if (typeof d.on === 'boolean') bits.push(d.on ? 'ON' : 'OFF');
+  if (d.hours != null) bits.push(d.hours + 'h');
+  if (d.capacity != null) bits.push(String(d.capacity));
+  if (d.role) bits.push(d.role);
+  if (d.passwordChanged) bits.push('password changed');
+  if (d.to) bits.push('→ ' + d.to);
+  if (d.by && d.by !== row.user_name) bits.push('by ' + d.by);
+  if (!bits.length && row.entity_id) bits.push(row.entity_id);
+  return bits.join(' · ');
+}
+async function renderStaffLog(forceReload) {
+  const c = document.getElementById('rep-stafflog');
+  if (!c) return;
+  const from = document.getElementById('report-from').value;
+  const to = document.getElementById('report-to').value;
+  if (!from || !to) return;
+  const rangeKey = from + '|' + to;
+  if (forceReload || staffLogRange !== rangeKey) {
+    c.innerHTML = '<div class="empty">Loading…</div>';
+    if (DEMO_MODE || !supa) { staffLogRows = []; staffLogRange = rangeKey; renderStaffLogTable(); return; }
+    try {
+      // Local YYYY-MM-DD -> UTC bounds, same convention as entriesForRange().
+      const fromISO = new Date(from + 'T00:00:00').toISOString();
+      const toISO = new Date(new Date(to + 'T00:00:00').getTime() + 86400000).toISOString();
+      const { data, error } = await supa
+        .from('audit_log')
+        .select('user_name, action, entity_type, entity_id, details, created_at')
+        .gte('created_at', fromISO)
+        .lt('created_at', toISO)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      if (error) throw error;
+      staffLogRows = data || [];
+      staffLogRange = rangeKey;
+    } catch (e) {
+      c.innerHTML = '<div class="empty" style="color:var(--red)">Could not load activity log — ' + (e.message || e) + '</div>';
+      return;
+    }
+    const sel = document.getElementById('stafflog-filter');
+    if (sel) {
+      const names = [...new Set(staffLogRows.map(r => r.user_name).filter(Boolean))].sort();
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">All Staff</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+      sel.value = names.includes(cur) ? cur : '';
+    }
+  }
+  renderStaffLogTable();
+}
+function renderStaffLogTable() {
+  const c = document.getElementById('rep-stafflog');
+  if (!c) return;
+  const filter = document.getElementById('stafflog-filter')?.value || '';
+  const rows = filter ? staffLogRows.filter(r => r.user_name === filter) : staffLogRows;
+  if (!rows.length) { c.innerHTML = '<div class="empty">No activity in this range</div>'; return; }
+  const capNote = staffLogRows.length >= 1000
+    ? '<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:8px">Showing the most recent 1000 events — narrow the date range to see everything.</div>' : '';
+  const body = rows.map(r => {
+    const t = new Date(r.created_at).toLocaleString('en-AU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return `<tr>
+      <td style="white-space:nowrap;font-size:12px;color:var(--text-muted)">${t}</td>
+      <td style="font-weight:600">${r.user_name || '—'}</td>
+      <td>${STAFFLOG_LABELS[r.action] || r.action}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${staffLogDetailText(r)}</td>
+    </tr>`;
+  }).join('');
+  c.innerHTML = capNote + `<div class="table-wrap"><table>
+    <thead><tr><th>When</th><th>Staff</th><th>Action</th><th>Details</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table></div>`;
+}
+
 // Customer Stay & Pricing Tiers: bucket completed stays by the fee tiers so you
 // can see how many cars park free vs paid, and the revenue each tier brings.
 const STAY_TIERS = [
@@ -11342,6 +11470,7 @@ function goReport(g) {
   showReportsGroup(g);
   if (g === 'payments') renderShopAccounts();
   if (g === 'monthly') renderMonthlyReport();
+  if (g === 'stafflog') renderStaffLog(true);
   // Opening the feedback report counts as having seen the new ratings.
   if (g === 'feedback') markFeedbackSeen();
 }
