@@ -10812,8 +10812,8 @@ function staffLogDetailText(row) {
   if (d.capacity != null) bits.push(String(d.capacity));
   if (d.role) bits.push(d.role);
   if (d.passwordChanged) bits.push('password changed');
-  if (d.to) bits.push('→ ' + d.to);
-  if (d.by && d.by !== row.user_name) bits.push('by ' + d.by);
+  if (d.to) bits.push('→ ' + staffDisplayName(d.to));
+  if (d.by && d.by !== row.user_name) bits.push('by ' + staffDisplayName(d.by));
   if (!bits.length && row.entity_id) bits.push(row.entity_id);
   return bits.join(' · ');
 }
@@ -10847,9 +10847,10 @@ async function renderStaffLog(forceReload) {
     }
     const sel = document.getElementById('stafflog-filter');
     if (sel) {
-      const names = [...new Set(staffLogRows.map(r => r.user_name).filter(Boolean))].sort();
+      const names = [...new Set(staffLogRows.map(r => r.user_name).filter(Boolean))]
+        .sort((a, b) => staffDisplayName(a).localeCompare(staffDisplayName(b)));
       const cur = sel.value;
-      sel.innerHTML = '<option value="">All Staff</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+      sel.innerHTML = '<option value="">All Staff</option>' + names.map(n => `<option value="${n}">${staffDisplayName(n)}</option>`).join('');
       sel.value = names.includes(cur) ? cur : '';
     }
   }
@@ -10868,7 +10869,7 @@ function renderStaffLogTable() {
     const t = new Date(r.created_at).toLocaleString('en-AU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
     return `<tr>
       <td style="white-space:nowrap;font-size:12px;color:var(--text-muted)">${t}</td>
-      <td style="font-weight:600">${r.user_name || '—'}</td>
+      <td style="font-weight:600">${r.user_name ? staffDisplayName(r.user_name) : '—'}</td>
       <td>${STAFFLOG_LABELS[r.action] || r.action}</td>
       <td style="font-size:12px;color:var(--text-muted)">${staffLogDetailText(r)}</td>
     </tr>`;
@@ -10946,10 +10947,11 @@ function renderStaffCoverageDay(d) {
     const widthPct = Math.max(0.6, ((s.end - s.start) / 86400000) * 100);
     const durMs = s.end - s.start;
     const timeLbl = `${fmtHM12(s.start)} – ${fmtHM12(s.end)} · ${durMs > 0 ? fmtDuration(durMs) : '<1m'}`;
+    const label = staffDisplayName(s.user);
     return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <div style="width:76px;flex-shrink:0;font-size:12px;font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.user}">${s.user}</div>
+      <div style="width:76px;flex-shrink:0;font-size:12px;font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${label}">${label}</div>
       <div style="flex:1;position:relative;height:20px;background:var(--sandstone);border-radius:4px;min-width:80px">
-        <div title="${s.user}: ${timeLbl}" style="position:absolute;top:2px;left:${leftPct}%;width:${widthPct}%;height:16px;background:linear-gradient(90deg,var(--bronze),var(--bronze-light));border-radius:4px"></div>
+        <div title="${label}: ${timeLbl}" style="position:absolute;top:2px;left:${leftPct}%;width:${widthPct}%;height:16px;background:linear-gradient(90deg,var(--bronze),var(--bronze-light));border-radius:4px"></div>
       </div>
       <div style="width:170px;flex-shrink:0;font-size:11px;color:var(--text-muted);font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${timeLbl}</div>
     </div>`;
