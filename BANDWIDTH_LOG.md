@@ -591,3 +591,10 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
   (0.7%), 6.354KB Functions (0.2%).
 - **Cumulative this cycle (06 Sep–11 Sep, chatswood-valet only): 0.085 GB
   / 250 GB (0.03%).** No budget concern.
+
+## 2026-09-11 (later, routine "check bandwidth" ask): no change from the morning check — 11 Sep still ~3.17MB partial, cumulative 0.085GB/250GB
+
+Per-project dashboard, `chatswood-valet` filter, re-verified. Figures are
+identical to the same-day check above (11 Sep partial ~3.17MB, same
+90.2%/8.9%/0.7%/0.2% split) — dashboard says it refreshes hourly, so no
+new data has posted yet. Nothing to flag, still very healthy.
