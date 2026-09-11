@@ -13712,7 +13712,7 @@ function showCustomerDetail(regoArg) {
           const hasRecord = (e.damage && e.damage.length) || (e.notes || '').trim() || (e.incident && e.incident.condition === 'damage');
           const isDmg = (e.damage && e.damage.length) || (e.incident && e.incident.condition === 'damage');
           return `<tr>
-            <td style="padding:5px;border-bottom:1px solid #ebebe9">${fmtDate(tIn)}</td>
+            <td style="padding:5px;border-bottom:1px solid #ebebe9">${fmtDate(tIn)} <span style="color:var(--text-muted)">${fmtTime(tIn)}</span></td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${arvEsc(e.ticket)}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9">${dur}</td>
             <td style="padding:5px;border-bottom:1px solid #ebebe9;text-align:right;font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',Menlo,Consolas,monospace">${e.totalFee ? fmtMoney(e.totalFee) : '—'}</td>
