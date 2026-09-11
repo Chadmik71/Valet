@@ -564,3 +564,30 @@ Per-project dashboard, `chatswood-valet` filter, exact tooltip:
 **Action item:** the 23 Aug Realtime spike (41% share) resolved on its own
 and hasn't recurred through 30 Aug — closing that watch item, no
 investigation needed unless it reappears.
+
+## 2026-09-11: New cycle (06 Sep–06 Oct) 6 days in, cumulative 0.085GB/250GB — still very healthy
+
+Per-project dashboard, `chatswood-valet` filter, exact tooltip:
+
+- **06 Sep 2026 (closed): ~27.92MB total** — 18.254MB PostgREST (65.4%),
+  9.505MB Realtime (34.0%), 67.417KB Auth (0.2%), 92.617KB Functions
+  (0.3%). Realtime share is elevated again (34.0%, close to the 23 Aug
+  41% spike) but on a low-volume day — worth a glance if it recurs on a
+  bigger day.
+- **07 Sep 2026 (closed): ~4.93MB total** — 3.593MB PostgREST (72.9%),
+  1.287MB Realtime (26.1%), 29.398KB Auth (0.6%), 18.929KB Functions
+  (0.4%).
+- **08 Sep 2026 (closed): ~0MB** — no bar on the chart, effectively no
+  traffic that day.
+- **09 Sep 2026 (closed): ~38.45MB total** — 36.543MB PostgREST (95.1%),
+  1.702MB Realtime (4.4%), 141.56KB Auth (0.4%), 61.119KB Functions
+  (0.2%). Biggest day of the cycle so far — Realtime share normal, just a
+  high-traffic day (this was the CSV backfill / mismatch-audit session).
+- **10 Sep 2026 (closed): ~6.35MB total** — 5.859MB PostgREST (92.3%),
+  413.932KB Realtime (6.4%), 46.566KB Auth (0.7%), 38.482KB Functions
+  (0.6%).
+- **11 Sep 2026 (partial, still open — NOT closed): ~3.17MB so far** —
+  2.859MB PostgREST (90.2%), 289.774KB Realtime (8.9%), 23.133KB Auth
+  (0.7%), 6.354KB Functions (0.2%).
+- **Cumulative this cycle (06 Sep–11 Sep, chatswood-valet only): 0.085 GB
+  / 250 GB (0.03%).** No budget concern.
