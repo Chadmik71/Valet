@@ -4258,12 +4258,19 @@ async function verifyCheckinSynced(entry) {
   const isStranded = () =>
     pendingWrites.some(w => w.op === 'upsert' && w.data && w.data.id === entry.id) ||
     entriesSyncQueue.has(entry.id);
-  await new Promise(r => setTimeout(r, 1500));
-  if (!isStranded()) return;                 // synced fine — nothing to do
+  // Poll instead of a single check. doCloudSync() below is a no-op while a
+  // sync from the original Save is still in flight (isCloudSyncing guard), and
+  // a normal round-trip can legitimately take a few seconds on a slow
+  // connection — a single 1.5s check was declaring cars "not synced" while
+  // the original save was still quietly working. Give it real time first.
+  for (let i = 0; i < 6; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (!isStranded()) return;                // synced fine — nothing to do
+  }
   await ensureAuthSession();
   await flushPendingWrites();
   try { await doCloudSync(); } catch (_) {}
-  await new Promise(r => setTimeout(r, 500));
+  await new Promise(r => setTimeout(r, 1500));
   if (isStranded()) {
     showCloudLoadStatus(
       `⚠ ${entry.rego || 'This car'} (bay ${entry.bay || '—'}) has NOT synced to the cloud yet — ` +
