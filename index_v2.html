@@ -3722,6 +3722,11 @@ function showView(name) {
   const isAdmin = !!(currentUser && currentUser.role === 'admin');
   if (!isAdmin && !MOBILE_VIEWS.includes(name)) name = 'new-entry';
 
+  // Remember the tab per-device (not cloud-synced — matches getUiMode()'s
+  // pattern) so a browser refresh reopens on the same screen instead of
+  // always snapping back to Dashboard.
+  try { localStorage.setItem('valet_last_view', name); } catch (e) {}
+
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
@@ -16268,6 +16273,14 @@ function initializeUI() {
 
   // Apply this device's saved UI mode (simple Mobile vs full Desktop)
   applyUiMode();
+
+  // Reopen on whichever tab this device was last showing (e.g. Active Cars)
+  // instead of always snapping back to Dashboard on refresh/login. showView()
+  // already re-applies the Mobile-lock redirect for non-admins, so a stale
+  // desktop-only view saved before a role change can't strand anyone.
+  const lastView = (() => { try { return localStorage.getItem('valet_last_view'); } catch (e) { return null; } })();
+  const knownViews = ['dashboard','new-entry','quick-pickup','pickup-queue','bags','active','log','customers','reports','settings'];
+  if (lastView && knownViews.includes(lastView)) showView(lastView);
 
   // Register the service worker + reflect push-alert state in Settings, then
   // point this device's push subscription at the logged-in user.
