@@ -14459,11 +14459,33 @@ async function uploadEntryPhoto(dataUrl, path) {
   }
 }
 
+// Fetch the most recent `target` rows by time_in, paginated. A single
+// .limit(target) call isn't enough — Supabase's project-level PostgREST
+// "Max Rows" setting silently caps every REST response (commonly 1000)
+// regardless of what .limit() the client asks for, with no error, so a
+// one-shot request can come back short and quietly strand older rows out
+// of the "recent" window. Paginating in .range() chunks (like
+// fetchEntriesInRange already does) sidesteps that cap entirely.
+async function fetchRecentEntries(target) {
+  const PAGE = 500;
+  const out = [];
+  for (let from = 0; from < target; from += PAGE) {
+    const to = Math.min(from + PAGE, target) - 1;
+    const { data, error } = await supa.from('entries').select('*')
+      .order('time_in', { ascending: false }).range(from, to);
+    if (error) throw error;
+    const rows = data || [];
+    out.push(...rows);
+    if (rows.length < (to - from + 1)) break;
+  }
+  return out;
+}
+
 async function cloudLoadAllEntries() {
   // DEMO/PITCH MODE: never touch the real customer table — return samples.
   if (DEMO_MODE) return generateDemoEntries();
-  const [recentRes, activeRes] = await Promise.all([
-    supa.from('entries').select('*').order('time_in', { ascending: false }).limit(2000),
+  const [recent, activeRes] = await Promise.all([
+    fetchRecentEntries(2000),
     // Any car still on-site (checked in, not yet checked out) must never
     // silently drop off the board just because enough newer cars pushed it
     // out of the "recent 2000" window — that's a real physical car staff
@@ -14471,9 +14493,7 @@ async function cloudLoadAllEntries() {
     // historical volume.
     supa.from('entries').select('*').is('time_out', null),
   ]);
-  if (recentRes.error) throw recentRes.error;
   if (activeRes.error) throw activeRes.error;
-  const recent = recentRes.data || [];
   recentBatchOldestTimeIn = recent.length
     ? recent.reduce((a, r) => (r.time_in < a ? r.time_in : a), recent[0].time_in)
     : null;
@@ -14547,10 +14567,24 @@ async function lightFullReconcile() {
   const changed = await cloudReconcileDelta();
   if (changed == null) return null;   // no baseline yet — caller falls back to a real full load
   try {
-    const { data, error } = await supa.from('entries').select('id')
-      .order('time_in', { ascending: false }).limit(2000);
-    if (!error) {
-      const cloudIds = new Set((data || []).map(r => r.id));
+    // Paginated for the same reason fetchRecentEntries() is: a single
+    // .limit(2000) can come back silently short of Supabase's project-level
+    // PostgREST "Max Rows" cap, and since this result prunes local entries
+    // not present in it, a truncated response would wrongly delete genuine
+    // older rows on every routine reconcile.
+    const ids = [];
+    const PAGE = 500;
+    for (let from = 0; from < 2000; from += PAGE) {
+      const to = Math.min(from + PAGE, 2000) - 1;
+      const { data, error } = await supa.from('entries').select('id')
+        .order('time_in', { ascending: false }).range(from, to);
+      if (error) throw error;
+      const rows = data || [];
+      ids.push(...rows);
+      if (rows.length < (to - from + 1)) break;
+    }
+    {
+      const cloudIds = new Set(ids.map(r => r.id));
       const pendingUpsertIds = new Set(entriesSyncQueue);
       pendingWrites.forEach(w => { if (w.op === 'upsert' && w.data && w.data.id) pendingUpsertIds.add(w.data.id); });
       const before = entries.length;
